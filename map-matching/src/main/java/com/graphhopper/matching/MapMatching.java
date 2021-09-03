@@ -88,6 +88,11 @@ public class MapMatching {
     private final BooleanEncodedValue inSubnetworkEnc;
     private QueryGraph queryGraph;
 
+    //for slide window value
+    private int Walking_Speed = 400;  //800m/5分钟
+    private int Stay_Distance = 800;
+    private int Interval = 2;   //采样点间隔
+
     public MapMatching(GraphHopper graphHopper, PMap hints) {
         this.locationIndex = (LocationIndexTree) graphHopper.getLocationIndex();
 
@@ -524,4 +529,129 @@ public class MapMatching {
         }
     }
 
+    //经纬度计算距离
+    public double getDistance (double lonA1,double latA1,double lonA2,double latA2) {
+        // 单位(米)
+        double lon1 = lonA1* Math.PI /180;
+        double lat1 = latA1* Math.PI /180;
+        double lon2 = lonA2* Math.PI /180;
+        double lat2 = latA2* Math.PI /180;
+        double dlon = lon2 - lon1;
+        double dlat = lat2 - lat1;
+        double a = Math.pow(Math.sin(dlat / 2), 2) + Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(dlon / 2), 2);
+        double c = 2 * Math.asin(Math.sqrt(a));
+        return c * 6371 * 1000;
+    }
+
+    /**
+     * Calculate trajectory of samples.
+     *
+     * @param samples Sequence of samples, {@link Observation} objects)
+     * @return HashMap 每一次停留，保留停留点;每一次路由，保留路由点
+     *          正整数 : stayPoint ArrayList
+     *          负整数: routePoint ArrayList.
+     */
+    public HashMap<Integer, ArrayList<Observation>> trajectoryCalculate(List<Observation> samples) {
+        if (samples.isEmpty() || (samples.size() <=1 )) {
+            return null;
+        }
+
+        int size = samples.size();
+        double dis = 0.0;
+        int left = 0;
+        int right = left + Interval;
+        int stayIndex = 1;
+        int routeIndex = -1;
+        boolean isLeftRoute = true;     //left初始化为route点
+        boolean isLeftAdd = false;
+
+        HashMap<Integer, ArrayList<Observation>> stayroutePointMap = new HashMap<>();
+        ArrayList<Observation> stayPoint = null;
+        ArrayList<Observation> routePoint = null;
+
+        while (right <= size - 1) {
+
+            //计算N个5分钟的位移距离
+            dis = getDistance(samples.get(left).getPoint().getLon(), samples.get(left).getPoint().getLat(),
+                    samples.get(right).getPoint().getLon(), samples.get(right).getPoint().getLat());
+
+            //left是停留点，left不变，right扩大
+            if ( dis <= Stay_Distance) {
+
+                //处理前一次的路由点
+                if (isLeftRoute) {
+                    isLeftRoute = false;
+
+                    if (routePoint != null) {
+                        stayroutePointMap.put(routeIndex, routePoint);
+                        routeIndex --;
+                        routePoint = null;
+                    }
+                }
+
+                if (stayPoint == null) {
+                    stayPoint = new ArrayList<>();
+                }
+
+                if (!isLeftAdd) {
+                    stayPoint.add(samples.get(left));
+                    stayPoint.add(samples.get(left + 1));
+                    isLeftAdd = true;
+                }
+
+                stayPoint.add(samples.get(right));
+                right ++;
+                continue;
+            }
+
+            //处理前一次的停留点
+            if (!isLeftRoute) {
+                isLeftRoute = true;
+                isLeftAdd = false;
+
+                if (stayPoint != null) {
+                    stayroutePointMap.put(stayIndex, stayPoint);
+                    stayIndex++;
+                    stayPoint = null;
+                }
+
+                left = right;
+                right = left + Interval;
+                continue;
+            }
+
+            if (routePoint == null) {
+                routePoint = new ArrayList<>();
+            }
+
+            routePoint.add(samples.get(left));
+            left ++;
+            right = left + Interval;
+        }
+
+        //right遍历结束，根据状态加入最后的点
+        if (!isLeftRoute) {
+            stayroutePointMap.put(stayIndex, stayPoint);
+
+            if (routePoint != null) {
+                stayroutePointMap.put(routeIndex, routePoint);
+            }
+        }
+        else {
+            if (right < size - 1) {
+                routePoint.add(samples.get(right - 2));
+                routePoint.add(samples.get(right - 1));
+            }
+
+            if (routePoint != null) {
+                stayroutePointMap.put(routeIndex, routePoint);
+            }
+
+            if (stayPoint != null) {
+                stayroutePointMap.put(stayIndex, stayPoint);
+            }
+        }
+
+        return stayroutePointMap;
+    }
 }

@@ -35,6 +35,10 @@ import com.graphhopper.routing.util.parsers.TurnCostParser;
 import com.graphhopper.storage.*;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
+import java.net.URI;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -114,6 +118,7 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
     private AreaIndex<CustomArea> areaIndex;
     private ElevationProvider eleProvider = ElevationProvider.NOOP;
     private File osmFile;
+    private String hdfsOsmFile;
     private Date osmDataDate;
     private final IntsRef tempRelFlags;
     private final TurnCostStorage tcs;
@@ -135,22 +140,46 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
         tcs = graph.getTurnCostStorage();
     }
 
+    public boolean isHdfs() {
+        if (hdfsOsmFile != null)
+            return true;
+        else
+            return false;
+    }
+
     public void readGraph() throws IOException {
         if (encodingManager == null)
             throw new IllegalStateException("Encoding manager was not set.");
 
-        if (osmFile == null)
-            throw new IllegalStateException("No OSM file specified");
+        if (isHdfs()) {
+            if (hdfsOsmFile == null)
+                throw new IllegalStateException("No HdfsOSM file specified");
 
-        if (!osmFile.exists())
-            throw new IllegalStateException("Your specified OSM file does not exist:" + osmFile.getAbsolutePath());
+            Configuration conf = new Configuration();
+            FileSystem fs = FileSystem.get(URI.create(hdfsOsmFile), conf);
+
+           if (!fs.exists(new Path(URI.create(hdfsOsmFile)))) {
+                System.out.println("Your specified HdfsOSM file open fail");
+                throw new IllegalStateException(
+                        "Your specified HdfsOSM file open fail:" + hdfsOsmFile);
+            }
+
+        }
+        else {
+            if (osmFile == null)
+                throw new IllegalStateException("No OSM file specified");
+
+            if (!osmFile.exists())
+                throw new IllegalStateException(
+                        "Your specified OSM file does not exist:" + osmFile.getAbsolutePath());
+        }
 
         StopWatch sw1 = new StopWatch().start();
-        preProcess(osmFile);
+        preProcess();
         sw1.stop();
 
         StopWatch sw2 = new StopWatch().start();
-        writeOsmToGraph(osmFile);
+        writeOsmToGraph();
         sw2.stop();
 
         LOGGER.info("time pass1:" + (int) sw1.getSeconds() + "s, "
@@ -162,9 +191,18 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
      * Preprocessing of OSM file to select nodes which are used for highways. This allows a more
      * compact graph data structure.
      */
-    void preProcess(File osmFile) {
-        LOGGER.info("Starting to process OSM file: '" + osmFile + "'");
-        try (OSMInput in = openOsmInputFile(osmFile)) {
+    void preProcess() {
+        OSMInput in = null;
+
+        try {
+            if (isHdfs()) {
+                LOGGER.info("Starting to process Hdfs OSM file: '" + hdfsOsmFile + "'");
+                in = openHdfsOsmInputFile(hdfsOsmFile);
+            } else {
+                LOGGER.info("Starting to process OSM file: '" + osmFile + "'");
+                in = openOsmInputFile(osmFile);
+            }
+
             long tmpWayCounter = 1;
             long tmpRelationCounter = 1;
             ReaderElement item;
@@ -250,15 +288,24 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
     /**
      * Creates the graph with edges and nodes from the specified osm file.
      */
-    private void writeOsmToGraph(File osmFile) {
+    private void writeOsmToGraph() {
         int tmp = (int) Math.max(getNodeMap().getSize() / 50, 100);
         LOGGER.info("creating graph. Found nodes (pillar+tower):" + nf(getNodeMap().getSize()) + ", " + Helper.getMemInfo());
         ghStorage.create(tmp);
 
+        OSMInput in = null;
         long wayStart = -1;
         long relationStart = -1;
         long counter = 1;
-        try (OSMInput in = openOsmInputFile(osmFile)) {
+        try {
+            if (isHdfs()) {
+                LOGGER.info("Starting to process HdfsOSM file: '" + hdfsOsmFile + "'");
+                in = openHdfsOsmInputFile(hdfsOsmFile);
+            } else {
+                LOGGER.info("Starting to process OSM file: '" + osmFile + "'");
+                in = openOsmInputFile(osmFile);
+            }
+
             LongIntMap nodeFilter = getNodeMap();
 
             ReaderElement item;
@@ -289,7 +336,7 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
                     default:
                         throw new IllegalStateException("Unknown type " + item.getType());
                 }
-                if (++counter % 200_000_000 == 0) {
+                if (++counter % 1_000_000 == 0) {
                     LOGGER.info(nf(counter) + ", locs:" + nf(locations) + ", " + Helper.getMemInfo());
                 }
             }
@@ -309,6 +356,10 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
 
     protected OSMInput openOsmInputFile(File osmFile) throws XMLStreamException, IOException {
         return new OSMInputFile(osmFile).setWorkerThreads(workerThreads).open();
+    }
+
+    protected OSMInput openHdfsOsmInputFile(String uri) throws XMLStreamException, IOException {
+        return new HdfsInputFile(uri).setWorkerThreads(workerThreads).open();
     }
 
     /**
@@ -999,6 +1050,11 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
 
     public OSMReader setFile(File osmFile) {
         this.osmFile = osmFile;
+        return this;
+    }
+
+    public OSMReader setFile(String hdfsosmFile) {
+        this.hdfsOsmFile = hdfsosmFile;
         return this;
     }
 

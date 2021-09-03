@@ -23,6 +23,7 @@ import com.graphhopper.config.CHProfile;
 import com.graphhopper.config.LMProfile;
 import com.graphhopper.config.Profile;
 import com.graphhopper.reader.dem.*;
+import com.graphhopper.reader.osm.HdfsInputFile;
 import com.graphhopper.reader.osm.OSMReader;
 import com.graphhopper.reader.osm.conditional.DateRangeParser;
 import com.graphhopper.routing.DefaultWeightingFactory;
@@ -685,15 +686,31 @@ public class GraphHopper {
         AreaIndex<CustomArea> areaIndex = new AreaIndex<>(customAreas);
 
         logger.info("start creating graph from " + osmFile);
-        OSMReader reader = new OSMReader(ghStorage).setFile(_getOSMFile()).
-                setAreaIndex(areaIndex).
-                setElevationProvider(eleProvider).
-                setWorkerThreads(dataReaderWorkerThreads).
-                setWayPointMaxDistance(dataReaderWayPointMaxDistance).
-                setWayPointElevationMaxDistance(routerConfig.getElevationWayPointMaxDistance()).
-                setSmoothElevation(smoothElevation).
-                setLongEdgeSamplingDistance(longEdgeSamplingDistance).
-                setCountryRuleFactory(countryRuleFactory);
+
+        OSMReader reader;
+
+        if (osmFile.contains("hdfs")) {
+            reader = new OSMReader(ghStorage).setFile(osmFile).
+                    setAreaIndex(areaIndex).
+                    setElevationProvider(eleProvider).
+                    setWorkerThreads(dataReaderWorkerThreads).
+                    setWayPointMaxDistance(dataReaderWayPointMaxDistance).
+                    setWayPointElevationMaxDistance(routerConfig.getElevationWayPointMaxDistance()).
+                    setSmoothElevation(smoothElevation).
+                    setLongEdgeSamplingDistance(longEdgeSamplingDistance).
+                    setCountryRuleFactory(countryRuleFactory);
+        } else {
+            reader = new OSMReader(ghStorage).setFile(_getOSMFile()).
+                    setAreaIndex(areaIndex).
+                    setElevationProvider(eleProvider).
+                    setWorkerThreads(dataReaderWorkerThreads).
+                    setWayPointMaxDistance(dataReaderWayPointMaxDistance).
+                    setWayPointElevationMaxDistance(routerConfig.getElevationWayPointMaxDistance()).
+                    setSmoothElevation(smoothElevation).
+                    setLongEdgeSamplingDistance(longEdgeSamplingDistance).
+                    setCountryRuleFactory(countryRuleFactory);
+        }
+
         logger.info("using " + ghStorage.toString() + ", memory:" + getMemInfo());
         try {
             reader.readGraph();
