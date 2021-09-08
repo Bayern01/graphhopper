@@ -23,7 +23,6 @@ import com.graphhopper.config.CHProfile;
 import com.graphhopper.config.LMProfile;
 import com.graphhopper.config.Profile;
 import com.graphhopper.reader.dem.*;
-import com.graphhopper.reader.osm.HdfsInputFile;
 import com.graphhopper.reader.osm.OSMReader;
 import com.graphhopper.reader.osm.conditional.DateRangeParser;
 import com.graphhopper.routing.DefaultWeightingFactory;
@@ -1178,6 +1177,24 @@ public class GraphHopper {
         ghStorage.flush();
         logger.info("flushed graph " + getMemInfo() + ")");
         setFullyLoaded();
+    }
+
+    public long getOSMWay(int internalEdgeId) {
+        long pointer = 8L * internalEdgeId;
+        DataAccess da = getGraphHopperStorage().getEdgeMapping();
+        System.out.println("internalEdgeId = " + internalEdgeId + " pointer = " + pointer);
+        return BitUtil.LITTLE.combineIntsToLong(da.getInt(pointer), da.getInt(pointer + 4L));
+
+    }
+
+    public long getOSMNode(int internalNodeId) {
+        if(internalNodeId >= getGraphHopperStorage().getNodes()) {
+            return -1;
+        }
+        long pointer = 8L * internalNodeId;
+        DataAccess da = getGraphHopperStorage().getNodeMapping();
+        long res = BitUtil.LITTLE.combineIntsToLong(da.getInt(pointer), da.getInt(pointer + 4L));
+        return res;
     }
 
     /**

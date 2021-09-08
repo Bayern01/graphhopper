@@ -123,11 +123,19 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
     private final IntsRef tempRelFlags;
     private final TurnCostStorage tcs;
 
+    //add for osmid mapping
+    private static final BitUtil bitUtil = BitUtil.LITTLE;
+    private DataAccess nodeMapping = null;
+    private DataAccess edgeMapping = null;
+
     public OSMReader(GraphHopperStorage ghStorage) {
         this.ghStorage = ghStorage;
         this.graph = ghStorage;
         this.nodeAccess = graph.getNodeAccess();
         this.encodingManager = ghStorage.getEncodingManager();
+
+        this.nodeMapping = ghStorage.getNodeMapping();
+        this.edgeMapping = ghStorage.getEdgeMapping();
 
         osmNodeIdToInternalNodeMap = new GHLongIntBTree(200);
         osmNodeIdToNodeFlagsMap = new GHLongLongHashMap(200, .5f);
@@ -586,7 +594,31 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
             getNodeMap().put(node.getId(), nextPillarId + 3);
             nextPillarId++;
         }
+
+        //add for osmid mapping
+        int internalNodeId = this.getNodeMap().get(node.getId());
+        storeOsmNodeID(internalNodeId, node.getId());
+
         return true;
+    }
+
+    protected void storeOsmNodeID(int nodeId, long osmNodeId) {
+        //final DataAccess nodeMapping;
+        if (nodeId < 0) {
+            // if nodeId < 0 then this is a tower node
+            nodeId = -nodeId;
+        } else {
+            // if nodeId > 0 then this is a pillar node
+            ;
+        }
+        // Not sure why the node process adds 3 to the node id?
+        // Possibly as tower and pillar node are internally stored in the same map,
+        // The +3 removes the conflict where id == 0, which would result in tower == -0, pillar == 0
+        nodeId -= 3;
+        long pointer = 8L * nodeId;
+        nodeMapping.ensureCapacity(pointer + 8L);
+        nodeMapping.setInt(pointer, BitUtil.LITTLE.getIntLow(osmNodeId));
+        nodeMapping.setInt(pointer + 4, BitUtil.LITTLE.getIntHigh(osmNodeId));
     }
 
     /**
@@ -831,6 +863,14 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
         if (getOsmWayIdSet().contains(osmWayId)) {
             getEdgeIdToOsmWayIdMap().put(edgeId, osmWayId);
         }
+
+        //add for osmid mapping
+        long pointer = 8L * edgeId;
+        edgeMapping.ensureCapacity(pointer + 8L);
+
+        edgeMapping.setInt(pointer, BitUtil.LITTLE.getIntLow(osmWayId));
+        edgeMapping.setInt(pointer + 4, BitUtil.LITTLE.getIntHigh(osmWayId));
+
     }
 
     /**
@@ -867,6 +907,10 @@ public class OSMReader implements TurnCostParser.ExternalInternalMap {
         osmWayIdToRouteWeightMap = null;
         osmWayIdSet = null;
         edgeIdToOsmWayIdMap = null;
+
+        //add for osmid mapping
+        nodeMapping.flush();
+        edgeMapping.flush();
     }
 
     /**

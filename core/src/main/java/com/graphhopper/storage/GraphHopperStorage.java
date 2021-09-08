@@ -49,6 +49,10 @@ public final class GraphHopperStorage implements GraphStorage, Graph {
     private final Collection<CHGraphImpl> chGraphs;
     private final int segmentSize;
 
+    //add for osmid mapping
+    private DataAccess nodeMapping;
+    private DataAccess edgeMapping;
+
     public GraphHopperStorage(Directory dir, EncodingManager encodingManager, boolean withElevation) {
         this(dir, encodingManager, withElevation, false);
     }
@@ -82,6 +86,12 @@ public final class GraphHopperStorage implements GraphStorage, Graph {
         };
         baseGraph = new BaseGraph(dir, encodingManager, withElevation, listener, withTurnCosts, segmentSize);
         chGraphs = new ArrayList<>();
+
+        //add for osmid mapping
+        nodeMapping = dir.find("node_mapping");
+        edgeMapping = dir.find("edge_mapping");
+        nodeMapping.create(100);
+        edgeMapping.create(100);
     }
 
     /**
@@ -222,6 +232,10 @@ public final class GraphHopperStorage implements GraphStorage, Graph {
     public StorableProperties getProperties() {
         return properties;
     }
+
+    public DataAccess getNodeMapping() { return nodeMapping;}
+
+    public DataAccess getEdgeMapping() { return edgeMapping;}
 
     @Override
     public boolean loadExisting() {
