@@ -251,6 +251,11 @@ public class RoutingExample {
                         ", OSMWayID: " + hopper.getOSMWay(internalEdgeId) +
                         " EdgeName = " + edge_match.getEdgeState().getName());
 
+                int internalNodeId =  edge_match.getEdgeState().getBaseNode();
+
+                System.out.println("basenode NodeID: " + internalNodeId +
+                        ", OSMNodeID: " + hopper.getOSMNode(internalNodeId));
+
                 for (int j = 0; j < list_state.size(); j++) {
                     if (i > 0) {
                         sb.append(", ");
@@ -258,9 +263,6 @@ public class RoutingExample {
                     //String str_snap = list_state.get(j).getSnap().getSnappedPoint().toShortString();
 
                     String str_snap = list_state.get(j).getSnap().getQueryPoint().toShortString();
-
-                    //System.out.println("closnode = " + list_state.get(j).getSnap().getClosestNode());
-
 
                     //System.out.println("incoming = " + list_state.get(j).getIncomingVirtualEdge().toString());
 
