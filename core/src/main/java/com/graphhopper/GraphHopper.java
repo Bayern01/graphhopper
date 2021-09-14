@@ -1182,13 +1182,12 @@ public class GraphHopper {
     public long getOSMWay(int internalEdgeId) {
         long pointer = 8L * internalEdgeId;
         DataAccess da = getGraphHopperStorage().getEdgeMapping();
-        System.out.println("internalEdgeId = " + internalEdgeId + " pointer = " + pointer);
         return BitUtil.LITTLE.combineIntsToLong(da.getInt(pointer), da.getInt(pointer + 4L));
 
     }
 
     public long getOSMNode(int internalNodeId) {
-        if(internalNodeId >= getGraphHopperStorage().getNodes()) {
+        if (internalNodeId >= getGraphHopperStorage().getNodes()) {
             return -1;
         }
         long pointer = 8L * internalNodeId;

@@ -32,11 +32,14 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import static com.graphhopper.json.Statement.If;
 import static com.graphhopper.json.Statement.Op.LIMIT;
 import static com.graphhopper.json.Statement.Op.MULTIPLY;
+import static com.graphhopper.util.FetchMode.ALL;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -75,7 +78,8 @@ public class RoutingExample {
                 setTurnCosts(false));
 
         // this enables speed mode for the profile we called car
-        hopper.getCHPreparationHandler().setCHProfiles(new CHProfile("car"));
+        //hopper.getCHPreparationHandler().setCHProfiles(new CHProfile("car"));
+        //hopper.getLMPreparationHandler().setLMProfiles(new LMProfile("car"));
 
         // now this can take minutes if it imports or a few seconds for loading of course this is dependent on the area you import
         hopper.importOrLoad();
@@ -218,6 +222,7 @@ public class RoutingExample {
 
         ArrayList<Observation> routePoint = null;
 
+
         for (Integer key : stayroutePointMap.keySet()) {
             if (key > 0) {
                 continue;
@@ -242,6 +247,8 @@ public class RoutingExample {
 
             sb.append("{  \"coordinates\": [\n    [\n");
 
+            System.out.println("list_edge.size() = " + list_edge.size());
+
             for (int i = 0; i < list_edge.size(); i++) {
                 EdgeMatch edge_match = list_edge.get(i);
                 List<State> list_state = edge_match.getStates();
@@ -253,20 +260,28 @@ public class RoutingExample {
 
                 int internalNodeId =  edge_match.getEdgeState().getBaseNode();
 
-                System.out.println("basenode NodeID: " + internalNodeId +
-                        ", OSMNodeID: " + hopper.getOSMNode(internalNodeId));
+                double internalNodeId_lon = hopper.getGraphHopperStorage().getBaseGraph().getNodeAccess().getLon(internalNodeId);
+                double internalNodeId_lat = hopper.getGraphHopperStorage().getBaseGraph().getNodeAccess().getLat(internalNodeId);
 
-                for (int j = 0; j < list_state.size(); j++) {
+                System.out.println("basenode NodeID: " + internalNodeId +
+                        ", OSMNodeID: " + hopper.getOSMNode(internalNodeId) +
+                        " lon = " + internalNodeId_lon +
+                        " lat = " + internalNodeId_lat);
+
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append('[');
+                sb.append(internalNodeId_lon);
+                sb.append(',');
+                sb.append(internalNodeId_lat);
+                sb.append(']');
+
+/*                for (int j = 0; j < list_state.size(); j++) {
                     if (i > 0) {
                         sb.append(", ");
                     }
-                    //String str_snap = list_state.get(j).getSnap().getSnappedPoint().toShortString();
-
-                    String str_snap = list_state.get(j).getSnap().getQueryPoint().toShortString();
-
-                    //System.out.println("incoming = " + list_state.get(j).getIncomingVirtualEdge().toString());
-
-                    //System.out.println("outcoming = " + list_state.get(j).getOutgoingVirtualEdge().toString());
+                    String str_snap = list_state.get(j).getSnap().getSnappedPoint().toShortString();
 
                     sb.append('[');
                     String[] xy = str_snap.split(",");
@@ -274,7 +289,7 @@ public class RoutingExample {
                     sb.append(',');
                     sb.append(xy[0]);
                     sb.append(']');
-                }
+                }*/
             }
 
             sb.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
@@ -286,7 +301,7 @@ public class RoutingExample {
 
 
 /*        PointList pointList = path.getPoints();
-        String st = st = pointList.toString();
+        String st = pointList.toString();
         double distance = path.getDistance();
         long timeInMs = path.getTime();
 
