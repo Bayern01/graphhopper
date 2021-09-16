@@ -242,26 +242,36 @@ public class RoutingExample {
 
             matchSW.stop();
 
-            final Map<Integer, EdgeMatch> mMatch = new HashMap<>();
-            final Map<Integer, PointList> mPoints = new HashMap<>();
             final List<EdgeMatch> matches = mr.getEdgeMatches();
+
+            if (matches.isEmpty()) {
+                continue;
+            }
+
+            final Map<Long, EdgeMatch> mMatch = new HashMap<>();
+            final Map<Long, PointList> mPoints = new HashMap<>();
 
             for (final EdgeMatch match : matches) {
                 final EdgeIteratorState s = match.getEdgeState();
-                final int eId = s.getEdge();
-                mMatch.put(eId, match);
-                mPoints.put(eId, s.fetchWayGeometry(ALL));
+                //final int eId = s.getEdge();
+                final int eId = s.getBaseNode();
+                long eosmId = hopper.getOSMWay(eId);
+                mMatch.put(eosmId, match);
+                //mPoints.put(eosmId, s.fetchWayGeometry(ALL));
+                PointList tmpPointList = new PointList();
+                tmpPointList.add(hopper.getGraphHopperStorage().getBaseGraph().getNodeAccess().getLat(eId),
+                        hopper.getGraphHopperStorage().getBaseGraph().getNodeAccess().getLon(eId));
+                mPoints.put(eosmId, tmpPointList);
             }
 
-            //List<EdgeMatch> samples_result = new ArrayList<>();
             EdgeMatch[] samples_result = new EdgeMatch[routePoint.size()];
-            for (int i = 0; i < routePoint.size() - 1; ++i) {
+            for (int i = 0; i < routePoint.size() - 1; i++) {
                 Observation gpx = routePoint.get(i);
 
                 double minDistance = Integer.MAX_VALUE;
-                int minEdgeId = -1;
-                final Set<Entry<Integer, PointList>> s = mPoints.entrySet();
-                for (final Entry<Integer, PointList> e : s) {
+                long minEdgeId = -1;
+                final Set<Entry<Long, PointList>> s = mPoints.entrySet();
+                for (final Entry<Long, PointList> e : s) {
                     final PointList points = e.getValue();
                     for (final GHPoint p : points) {
                         final double d = Math.abs(mapMatching.getDistance(gpx.getPoint().getLat(),
@@ -280,8 +290,6 @@ public class RoutingExample {
                 }
             }
 
-
-
             List<EdgeMatch> list_edge = mr.getEdgeMatches();
 
             StringBuilder sb = new StringBuilder();
@@ -290,11 +298,11 @@ public class RoutingExample {
 
             System.out.println("list_edge.size() = " + samples_result.length);
 
+
             for (int i = 0; i < samples_result.length - 1; i++) {
                 //EdgeMatch edge_match = list_edge.get(i);
                 EdgeMatch edge_match = samples_result[i];
-                List<State> list_state = edge_match.getStates();
-
+                //List<State> list_state = edge_match.getStates();
 
                 int internalEdgeId =  edge_match.getEdgeState().getEdge();
                 System.out.println("EdgeID: " + internalEdgeId +
@@ -308,16 +316,16 @@ public class RoutingExample {
 
                 System.out.println("basenode NodeID: " + internalNodeId +
                         ", OSMNodeID: " + hopper.getOSMNode(internalNodeId) +
-                        " lon = " + String.format("%.5f", internalNodeId_lon) +
-                        " lat = " + String.format("%.5f", internalNodeId_lat));
+                        " lon = " + String.format("%.6f", internalNodeId_lon) +
+                        " lat = " + String.format("%.6f", internalNodeId_lat));
 
                 if (i > 0) {
                     sb.append(", ");
                 }
                 sb.append('[');
-                sb.append(String.format("%.5f", internalNodeId_lon));
+                sb.append(String.format("%.6f", internalNodeId_lon));
                 sb.append(',');
-                sb.append(String.format("%.5f", internalNodeId_lat));
+                sb.append(String.format("%.6f", internalNodeId_lat));
                 sb.append(']');
 
 /*                for (int j = 0; j < list_state.size(); j++) {
