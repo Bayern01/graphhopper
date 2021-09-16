@@ -33,6 +33,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import static com.graphhopper.json.Statement.If;
@@ -241,17 +242,59 @@ public class RoutingExample {
 
             matchSW.stop();
 
+            final Map<Integer, EdgeMatch> mMatch = new HashMap<>();
+            final Map<Integer, PointList> mPoints = new HashMap<>();
+            final List<EdgeMatch> matches = mr.getEdgeMatches();
+
+            for (final EdgeMatch match : matches) {
+                final EdgeIteratorState s = match.getEdgeState();
+                final int eId = s.getEdge();
+                mMatch.put(eId, match);
+                mPoints.put(eId, s.fetchWayGeometry(ALL));
+            }
+
+            //List<EdgeMatch> samples_result = new ArrayList<>();
+            EdgeMatch[] samples_result = new EdgeMatch[routePoint.size()];
+            for (int i = 0; i < routePoint.size() - 1; ++i) {
+                Observation gpx = routePoint.get(i);
+
+                double minDistance = Integer.MAX_VALUE;
+                int minEdgeId = -1;
+                final Set<Entry<Integer, PointList>> s = mPoints.entrySet();
+                for (final Entry<Integer, PointList> e : s) {
+                    final PointList points = e.getValue();
+                    for (final GHPoint p : points) {
+                        final double d = Math.abs(mapMatching.getDistance(gpx.getPoint().getLat(),
+                                gpx.getPoint().getLon(), p.getLat(), p.getLon()
+                        ));
+                        if (d < minDistance) {
+                            minDistance = d;
+                            minEdgeId = e.getKey();
+                        }
+                    }
+                }
+
+                if(minEdgeId >= 0) {
+                    //samples_result.set(i, mMatch.get(minEdgeId));
+                    samples_result[i] = mMatch.get(minEdgeId);
+                }
+            }
+
+
+
             List<EdgeMatch> list_edge = mr.getEdgeMatches();
 
             StringBuilder sb = new StringBuilder();
 
             sb.append("{  \"coordinates\": [\n    [\n");
 
-            System.out.println("list_edge.size() = " + list_edge.size());
+            System.out.println("list_edge.size() = " + samples_result.length);
 
-            for (int i = 0; i < list_edge.size(); i++) {
-                EdgeMatch edge_match = list_edge.get(i);
+            for (int i = 0; i < samples_result.length - 1; i++) {
+                //EdgeMatch edge_match = list_edge.get(i);
+                EdgeMatch edge_match = samples_result[i];
                 List<State> list_state = edge_match.getStates();
+
 
                 int internalEdgeId =  edge_match.getEdgeState().getEdge();
                 System.out.println("EdgeID: " + internalEdgeId +
@@ -265,16 +308,16 @@ public class RoutingExample {
 
                 System.out.println("basenode NodeID: " + internalNodeId +
                         ", OSMNodeID: " + hopper.getOSMNode(internalNodeId) +
-                        " lon = " + internalNodeId_lon +
-                        " lat = " + internalNodeId_lat);
+                        " lon = " + String.format("%.5f", internalNodeId_lon) +
+                        " lat = " + String.format("%.5f", internalNodeId_lat));
 
                 if (i > 0) {
                     sb.append(", ");
                 }
                 sb.append('[');
-                sb.append(internalNodeId_lon);
+                sb.append(String.format("%.5f", internalNodeId_lon));
                 sb.append(',');
-                sb.append(internalNodeId_lat);
+                sb.append(String.format("%.5f", internalNodeId_lat));
                 sb.append(']');
 
 /*                for (int j = 0; j < list_state.size(); j++) {
