@@ -79,7 +79,7 @@ public class MapMatching {
     private final Graph graph;
     private final PrepareLandmarks landmarks;
     private final LocationIndexTree locationIndex;
-    private double measurementErrorSigma = 50.0;
+    private double measurementErrorSigma = 200.0;
     private double transitionProbabilityBeta = 2.0;
     private final int maxVisitedNodes;
     private final DistanceCalc distanceCalc = new DistancePlaneProjection();
@@ -378,6 +378,8 @@ public class MapMatching {
             }
         }
 
+        System.out.println("viterbi.isBroken likelyReasonStr is " + likelyReasonStr);
+
         throw new IllegalArgumentException("Sequence is broken for submitted track at time step "
                 + timeStepCounter + ". "
                 + likelyReasonStr + "observation:" + timeStep.observation + ", "
@@ -572,8 +574,10 @@ public class MapMatching {
         while (right <= size - 1) {
 
             //计算N个5分钟的位移距离
-            dis = getDistance(samples.get(left).getPoint().getLon(), samples.get(left).getPoint().getLat(),
-                    samples.get(right).getPoint().getLon(), samples.get(right).getPoint().getLat());
+/*            dis = getDistance(samples.get(left).getPoint().getLon(), samples.get(left).getPoint().getLat(),
+                    samples.get(right).getPoint().getLon(), samples.get(right).getPoint().getLat());*/
+            dis = distanceCalc.calcDist(samples.get(left).getPoint().getLat(),samples.get(left).getPoint().getLon(),
+                    samples.get(right).getPoint().getLat(),samples.get(right).getPoint().getLon());
 
             //left是停留点，left不变，right扩大
             if ( dis <= Stay_Distance) {

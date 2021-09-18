@@ -216,7 +216,7 @@ public class RoutingExample {
 
         MapMatching mapMatching = new MapMatching(hopper, hints);
 
-        List<Observation> samples = InputFormatMy.formatFile("D:\\ubuntu\\rootfs\\mnt\\barefoot\\util\\submit\\wu2.json");
+        List<Observation> samples = InputFormatMy.formatFile("D:\\input\\ods\\qm-1.json");
 
         HashMap<Integer, ArrayList<Observation>> stayroutePointMap =
                 mapMatching.trajectoryCalculate(samples);
@@ -264,9 +264,19 @@ public class RoutingExample {
                 mPoints.put(eosmId, tmpPointList);
             }
 
+            StringBuilder sb_gpx = new StringBuilder();
+            sb_gpx.append("{  \"coordinates\": [\n    [\n");
             EdgeMatch[] samples_result = new EdgeMatch[routePoint.size()];
             for (int i = 0; i < routePoint.size() - 1; i++) {
                 Observation gpx = routePoint.get(i);
+                if (i > 0) {
+                    sb_gpx.append(", ");
+                }
+                sb_gpx.append('[');
+                sb_gpx.append(String.format("%.6f", gpx.getPoint().getLon()));
+                sb_gpx.append(',');
+                sb_gpx.append(String.format("%.6f", gpx.getPoint().getLat()));
+                sb_gpx.append(']');
 
                 double minDistance = Integer.MAX_VALUE;
                 long minEdgeId = -1;
@@ -290,6 +300,8 @@ public class RoutingExample {
                 }
             }
 
+            sb_gpx.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
+
             List<EdgeMatch> list_edge = mr.getEdgeMatches();
 
             StringBuilder sb = new StringBuilder();
@@ -300,8 +312,10 @@ public class RoutingExample {
 
 
             for (int i = 0; i < samples_result.length - 1; i++) {
-                //EdgeMatch edge_match = list_edge.get(i);
+            //for (int i = 0; i < list_edge.size() -1; i++) {
                 EdgeMatch edge_match = samples_result[i];
+
+                //EdgeMatch edge_match = list_edge.get(i);
                 //List<State> list_state = edge_match.getStates();
 
                 int internalEdgeId =  edge_match.getEdgeState().getEdge();
@@ -345,6 +359,10 @@ public class RoutingExample {
 
             sb.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
 
+            System.out.println("*****Sample Route Point*****");
+            System.out.println(sb_gpx.toString());
+            System.out.println("");
+            System.out.println("*****OSM Node Point*****");
             System.out.println(sb.toString());
 
             System.out.println("match took: " + matchSW.getMillis() + " ms");
