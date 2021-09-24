@@ -20,11 +20,16 @@ import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,6 +46,7 @@ import static com.graphhopper.json.Statement.Op.LIMIT;
 import static com.graphhopper.json.Statement.Op.MULTIPLY;
 import static com.graphhopper.util.FetchMode.ALL;
 
+import java.util.stream.Collectors;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -104,7 +110,8 @@ public class RoutingExample {
 
                 if (jsoninput instanceof JSONObject) {
                     jsonsamples = ((JSONObject) jsoninput).getJSONArray("request");
-                } else {
+                }
+                else {
                     jsonsamples = ((JSONArray) jsoninput);
                 }
 
@@ -114,7 +121,8 @@ public class RoutingExample {
                             jsonsamples.getString(i)));
                     samples.add(sample);
                 }
-            } catch (JSONException e) {
+            }
+            catch (JSONException e) {
                 e.printStackTrace();
                 throw new RuntimeException("parsing JSON request: " + e.getMessage());
             }
@@ -131,7 +139,8 @@ public class RoutingExample {
 
                 if (jsoninput instanceof JSONObject) {
                     jsonsamples = ((JSONObject) jsoninput).getJSONArray("request");
-                } else {
+                }
+                else {
                     jsonsamples = ((JSONArray) jsoninput);
                 }
 
@@ -144,7 +153,8 @@ public class RoutingExample {
                     Observation sample = new Observation(GHPoint.fromStringLonLat(xy));
                     samples.add(sample);
                 }
-            } catch (JSONException e) {
+            }
+            catch (JSONException e) {
                 e.printStackTrace();
                 throw new RuntimeException("parsing JSON request: " + e.getMessage());
             }
@@ -161,20 +171,152 @@ public class RoutingExample {
                 FileInputStream in = new FileInputStream(file);
                 in.read(filecontent);
                 in.close();
-            } catch (FileNotFoundException e) {
+            }
+            catch (FileNotFoundException e) {
                 e.printStackTrace();
-            } catch (IOException e) {
+            }
+            catch (IOException e) {
                 e.printStackTrace();
             }
             try {
                 return formatArrayList(new String(filecontent, encoding));
-            } catch (UnsupportedEncodingException e) {
+            }
+            catch (UnsupportedEncodingException e) {
                 System.err.println("The OS does not support " + encoding);
                 e.printStackTrace();
                 return null;
             }
         }
 
+        public static ArrayList formattxtFile(String filename) {
+            try {
+                String temp = null;
+                File f = new File(filename);
+                InputStreamReader read = new InputStreamReader(new FileInputStream(f));
+                ArrayList readList = new ArrayList();
+
+                BufferedReader reader = new BufferedReader(read);
+                while ((temp = reader.readLine()) != null && !"".equals(temp)) {
+                    readList.add(temp);
+                }
+                read.close();
+                return readList;
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+        }
+
+        public static ArrayList<String> trajectoryClean(ArrayList arrayList) {
+            ArrayList<String> clean = new ArrayList<>();
+            String temp = null;
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+            Long last_time;
+            Long this_time;
+
+            ArrayList<Integer> diff_seq = new ArrayList<>();
+
+            try {
+                for (int i = 1; i < arrayList.size(); i++) {
+                    temp = (String) arrayList.get(i - 1);
+                    String[] last_row = temp.split(",");
+                    last_time = df.parse(last_row[2]).getTime();
+                    temp = (String) arrayList.get(i);
+                    String[] row = temp.split(",");
+                    this_time = df.parse(row[2]).getTime();
+
+                    int diff = (int) ((this_time - last_time) / 60 / 1000);
+
+                    diff_seq.add(diff);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            clean.add((String)arrayList.get(0));
+            for (int i = 0; i < diff_seq.size(); i++) {
+                if (diff_seq.get(i) > 0) {
+                    clean.add((String)arrayList.get(i+1));
+                }
+            }
+
+            return clean;
+        }
+
+        public static ArrayList<Observation> trajectoryReduce(ArrayList arrayList) {
+            ArrayList<Observation> samples = new ArrayList<>();
+            String temp = null;
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+            Long last_time;
+            Long this_time;
+
+            ArrayList<Integer> diff_seq = new ArrayList<>();
+
+            try {
+                for (int i = 1; i < arrayList.size(); i++) {
+                    temp = (String) arrayList.get(i - 1);
+                    String[] last_row = temp.split(",");
+                    last_time = df.parse(last_row[2]).getTime();
+                    temp = (String) arrayList.get(i);
+                    String[] row = temp.split(",");
+                    this_time = df.parse(row[2]).getTime();
+
+                    int diff = (int) ((this_time - last_time) / 60 / 1000);
+
+                    diff_seq.add(diff);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            ArrayList<Double> lngList = new ArrayList<>();
+            ArrayList<Double> latList = new ArrayList<>();
+            int slide = 0;
+            double lng = 0.0;
+            double lat = 0.0;
+
+            temp = (String) arrayList.get(0);
+            String[] row = temp.split(",");
+            lngList.add(Double.parseDouble(row[0]));
+            latList.add(Double.parseDouble(row[1]));
+
+            for (int i = 0; i < diff_seq.size(); i++) {
+                slide += diff_seq.get(i);
+                temp = (String) arrayList.get(i+1);
+                String[] diff_row = temp.split(",");
+
+                if (slide <= 5) {
+                    lngList.add(Double.parseDouble(diff_row[0]));
+                    latList.add(Double.parseDouble(diff_row[1]));
+                    continue;
+                }
+
+                if (lngList.size() > 0) {
+                    lng = lngList.stream().collect(Collectors.averagingDouble(x -> x));
+                    lat = latList.stream().collect(Collectors.averagingDouble(x -> x));
+                    lngList.clear();
+                    latList.clear();
+                    if (i > 0) {
+                        i--;
+                    }
+                }
+                else {
+                    lng = Double.parseDouble(diff_row[0]);
+                    lat = Double.parseDouble(diff_row[1]);
+                }
+
+                Observation sample = new Observation(new GHPoint(lat,lng));
+                samples.add(sample);
+                slide = 0;
+            }
+
+            return samples;
+        }
     }
 
     public static void routing(GraphHopper hopper) {
@@ -216,16 +358,39 @@ public class RoutingExample {
 
         MapMatching mapMatching = new MapMatching(hopper, hints);
 
-        List<Observation> samples = InputFormatMy.formatFile("D:\\input\\ods\\qm-1.json");
+        //List<Observation> samples = InputFormatMy.formatFile("D:\\input\\ods\\zhang-1.json");
+        ArrayList origList = InputFormatMy.formattxtFile("D:\\input\\ods\\fang-xiao.txt");
+        System.out.println("original size = " + origList.size());
+        ArrayList<String> cleanList = InputFormatMy.trajectoryClean(origList);
+        System.out.println("clean size = " + cleanList.size());
+        ArrayList<Observation> samples = InputFormatMy.trajectoryReduce(cleanList);
+        System.out.println("samples size = " + samples.size());
 
         HashMap<Integer, ArrayList<Observation>> stayroutePointMap =
                 mapMatching.trajectoryCalculate(samples);
 
         ArrayList<Observation> routePoint = null;
 
-
         for (Integer key : stayroutePointMap.keySet()) {
             if (key > 0) {
+                //≈≈–Ú...
+
+                StringBuilder sb_stay = new StringBuilder();
+                sb_stay.append("{  \"coordinates\": [\n    [\n");
+                for (int i = 0; i < stayroutePointMap.get(key).size(); i++) {
+                    Observation gpx = stayroutePointMap.get(key).get(i);
+                    if (i > 0) {
+                        sb_stay.append(", ");
+                    }
+                    sb_stay.append('[');
+                    sb_stay.append(String.format("%.6f", gpx.getPoint().getLon()));
+                    sb_stay.append(',');
+                    sb_stay.append(String.format("%.6f", gpx.getPoint().getLat()));
+                    sb_stay.append(']');
+                }
+                sb_stay.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
+                System.out.println("***** Stay Point*****");
+                System.out.println(sb_stay.toString());
                 continue;
             }
 
@@ -311,12 +476,12 @@ public class RoutingExample {
             System.out.println("list_edge.size() = " + samples_result.length);
 
 
-            for (int i = 0; i < samples_result.length - 1; i++) {
-            //for (int i = 0; i < list_edge.size() -1; i++) {
-                EdgeMatch edge_match = samples_result[i];
+            //for (int i = 0; i < samples_result.length - 1; i++) {
+            for (int i = 0; i < list_edge.size() -1; i++) {
+                //EdgeMatch edge_match = samples_result[i];
 
-                //EdgeMatch edge_match = list_edge.get(i);
-                //List<State> list_state = edge_match.getStates();
+                EdgeMatch edge_match = list_edge.get(i);
+                List<State> list_state = edge_match.getStates();
 
                 int internalEdgeId =  edge_match.getEdgeState().getEdge();
                 System.out.println("EdgeID: " + internalEdgeId +
@@ -359,9 +524,9 @@ public class RoutingExample {
 
             sb.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
 
-            System.out.println("*****Sample Route Point*****");
+/*            System.out.println("*****Sample Route Point*****");
             System.out.println(sb_gpx.toString());
-            System.out.println("");
+            System.out.println("");*/
             System.out.println("*****OSM Node Point*****");
             System.out.println(sb.toString());
 
