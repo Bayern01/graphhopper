@@ -351,6 +351,66 @@ public class RoutingExample {
         assert Helper.round(path.getDistance(), -2) == 900;
     }
 
+    public static ArrayList<Observation> multiPointSort(ArrayList<Observation> origList) {
+        ArrayList<Observation> distctlist=(ArrayList) origList.stream().distinct().collect(Collectors.toList());
+
+        //not multi polygon
+        if (distctlist.size() < 3) {
+            return distctlist;
+        }
+
+        ArrayList<Observation> sortedPoint = new ArrayList<>();
+
+        double plusX = 0, plusY = 0;
+        for (Observation latLng : distctlist) {
+            plusX += latLng.getPoint().getLon();
+            plusY += latLng.getPoint().getLat();
+        }
+        Observation center = new Observation(new GHPoint(plusY / distctlist.size(), plusX / distctlist.size()));
+
+        HashMap<Integer, ArrayList<Object>> mapAll = new HashMap<>();
+        for (int i = 0; i < distctlist.size(); i++) {
+            ArrayList<Object> objList = new ArrayList<>();
+            objList.add(distctlist.get(i));
+            objList.add(getAngle1(center.getPoint().getLat(), center.getPoint().getLon(),
+                    distctlist.get(i).getPoint().getLat(), distctlist.get(i).getPoint().getLon()));
+            mapAll.put(i, objList);
+        }
+
+        ArrayList<Object> temp = new ArrayList<>();
+        int size = mapAll.size();
+        for (int i = 0; i < size - 1; i++) {
+            for (int j = 0; j < size - 1 - i; j++) {
+                if (Double.parseDouble(mapAll.get(j).get(1).toString()) >
+                        Double.parseDouble(mapAll.get(j + 1).get(1).toString()))
+                {
+                    temp = mapAll.get(j);
+                    mapAll.put(j, mapAll.get(j + 1));
+                    mapAll.put(j + 1, temp);
+                }
+            }
+        }
+
+        for (Integer integer : mapAll.keySet()) {
+            if (mapAll.get(integer).get(0) instanceof Observation) {
+                sortedPoint.add((Observation) mapAll.get(integer).get(0));
+            }
+        }
+
+        return sortedPoint;
+    }
+
+    private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
+        double y = Math.sin(lng_b - lng_a) * Math.cos(lat_b);
+        double x = Math.cos(lat_a) * Math.sin(lat_b) - Math.sin(lat_a) * Math.cos(lat_b) * Math.cos(lng_b - lng_a);
+        double brng = Math.atan2(y, x);
+
+        brng = Math.toDegrees(brng);
+        if (brng < 0)
+            brng = brng + 360;
+        return brng;
+    }
+
     public static void matchingTest(GraphHopper hopper) {
 
         PMap hints = new PMap();
@@ -370,15 +430,16 @@ public class RoutingExample {
                 mapMatching.trajectoryCalculate(samples);
 
         ArrayList<Observation> routePoint = null;
+        ArrayList<Observation> sortedPoint = null;
 
         for (Integer key : stayroutePointMap.keySet()) {
             if (key > 0) {
-                //≈≈–Ú...
+                sortedPoint = multiPointSort(stayroutePointMap.get(key));
 
                 StringBuilder sb_stay = new StringBuilder();
                 sb_stay.append("{  \"coordinates\": [\n    [\n");
-                for (int i = 0; i < stayroutePointMap.get(key).size(); i++) {
-                    Observation gpx = stayroutePointMap.get(key).get(i);
+                for (int i = 0; i < sortedPoint.size(); i++) {
+                    Observation gpx = sortedPoint.get(i);
                     if (i > 0) {
                         sb_stay.append(", ");
                     }
@@ -388,8 +449,16 @@ public class RoutingExample {
                     sb_stay.append(String.format("%.6f", gpx.getPoint().getLat()));
                     sb_stay.append(']');
                 }
+                //closing multi polygon
+                sb_stay.append(',');
+                sb_stay.append('[');
+                sb_stay.append(String.format("%.6f", sortedPoint.get(0).getPoint().getLon()));
+                sb_stay.append(',');
+                sb_stay.append(String.format("%.6f", sortedPoint.get(0).getPoint().getLat()));
+                sb_stay.append(']');
+
                 sb_stay.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
-                System.out.println("***** Stay Point*****");
+                System.out.println("***** Stay Point " + key + " *****");
                 System.out.println(sb_stay.toString());
                 continue;
             }
