@@ -54,6 +54,9 @@ import org.json.JSONTokener;
 
 public class RoutingExample {
 
+    static int Interval_Seconds = 30;
+    static int Interval_Minutes = 5;
+
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
         String strosm = "./sichuan.osm.pbf";
@@ -226,7 +229,7 @@ public class RoutingExample {
                     String[] row = temp.split(",");
                     this_time = df.parse(row[2]).getTime();
 
-                    int diff = (int) ((this_time - last_time) / 60 / 1000);
+                    int diff = (int) ((this_time - last_time) / 1000);
 
                     diff_seq.add(diff);
                 }
@@ -238,7 +241,7 @@ public class RoutingExample {
 
             clean.add((String)arrayList.get(0));
             for (int i = 0; i < diff_seq.size(); i++) {
-                if (diff_seq.get(i) > 0) {
+                if (diff_seq.get(i) > Interval_Seconds) {
                     clean.add((String)arrayList.get(i+1));
                 }
             }
@@ -290,7 +293,7 @@ public class RoutingExample {
                 temp = (String) arrayList.get(i+1);
                 String[] diff_row = temp.split(",");
 
-                if (slide <= 5) {
+                if (slide <= Interval_Minutes) {
                     lngList.add(Double.parseDouble(diff_row[0]));
                     latList.add(Double.parseDouble(diff_row[1]));
                     continue;
