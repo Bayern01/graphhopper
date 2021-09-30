@@ -54,8 +54,12 @@ import org.json.JSONTokener;
 
 public class RoutingExample {
 
-    static int Interval_Seconds = 30;
-    static int Interval_Minutes = 5;
+    static int Interval_Seconds = 1;
+    static int Reduce_Seconds = 60 * 5;
+    static int Delta_Distance = 800;
+    static int Delta_Seconds = 600;
+    static int Distance_Threshold = 800;
+    static int Time_Threshold = 60 * 15;
 
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
@@ -249,27 +253,45 @@ public class RoutingExample {
             return clean;
         }
 
-        public static ArrayList<Observation> trajectoryReduce(ArrayList arrayList) {
-            ArrayList<Observation> samples = new ArrayList<>();
-            String temp = null;
-            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
-            Long last_time;
-            Long this_time;
+        public static ArrayList<String> trajectoryDenoise(ArrayList arrayList) {
+            ArrayList<String> denoise = new ArrayList<>();
+            denoise = (ArrayList<String>) arrayList.clone();
 
-            ArrayList<Integer> diff_seq = new ArrayList<>();
+            String[] temp = null;
+            String[] temp1 = null;
+            String[] temp2 = null;
+            String[] tempn1 = null;
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
 
             try {
-                for (int i = 1; i < arrayList.size(); i++) {
-                    temp = (String) arrayList.get(i - 1);
-                    String[] last_row = temp.split(",");
-                    last_time = df.parse(last_row[2]).getTime();
-                    temp = (String) arrayList.get(i);
-                    String[] row = temp.split(",");
-                    this_time = df.parse(row[2]).getTime();
+                for (int i = 2; i < denoise.size() - 2; i++) {
+                    temp = ((String)arrayList.get(i)).split(",");
+                    temp1 = ((String)arrayList.get(i+1)).split(",");
+                    double dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                            Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
 
-                    int diff = (int) ((this_time - last_time) / 60 / 1000);
+                    int diff = (int) ((df.parse(temp1[2]).getTime() - df.parse(temp[2]).getTime()) / 1000);
 
-                    diff_seq.add(diff);
+                    if (dis > Delta_Distance && diff < Delta_Seconds) {
+                        temp2 = ((String)arrayList.get(i+2)).split(",");
+                        double dis2 = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                                Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
+                        int diff2 = (int) ((df.parse(temp2[2]).getTime() - df.parse(temp1[2]).getTime()) / 1000);
+
+                        if (dis2 < Delta_Distance && diff2 < Delta_Seconds) {
+                            //System.out.println("denoise.remove(i) " + arrayList.get(i));
+                            denoise.remove(arrayList.get(i));
+                        }
+
+                        tempn1 = ((String)arrayList.get(i-1)).split(",");
+                        double dis1 = getDistance(Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]),
+                                Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
+                        int diffn1 = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
+                        if (dis1 < Delta_Distance && diffn1 < Delta_Seconds) {
+                            //System.out.println("denoise.remove(i+1) " + arrayList.get(i+1));
+                            denoise.remove(arrayList.get(i+1));
+                        }
+                    }
                 }
             }
             catch (Exception e) {
@@ -277,48 +299,194 @@ public class RoutingExample {
                 return null;
             }
 
+            return denoise;
+        }
+
+        public static HashMap<Integer, ArrayList<Observation>> StayPoint_Detection(ArrayList arrayList) {
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+
+            int i = 0;
+            int j = 0;
+            int stayIndex = 1;
+            int routeIndex = -1;
+            String[] temp1 = null;
+            String[] temp2 = null;
+            String[] tempn1 = null;
+            int diff = 0;
+            double lng,lat;
+
+            ArrayList<Observation> stayPoint = null;
+            ArrayList<Observation> routePoint = new ArrayList<>();
+            ArrayList<String> routeArray = new ArrayList<>();
+            HashMap<Integer, ArrayList<Observation>> stayroutePointMap = new HashMap<>();
+
+            int pointNum = arrayList.size();
+
+            while (i < pointNum) {
+                j = i + 1;
+                try {
+                    while (j < pointNum) {
+                        temp1 = ((String) arrayList.get(i)).split(",");
+                        temp2 = ((String) arrayList.get(j)).split(",");
+                        tempn1 = ((String) arrayList.get(j - 1)).split(",");
+                        double dis =
+                                getDistance(Double.parseDouble(temp1[0]),
+                                        Double.parseDouble(temp1[1]),
+                                        Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1])
+                                );
+                        if (dis > Distance_Threshold) {
+                            diff = (int) (
+                                    (
+                                            df.parse(tempn1[2]).getTime() - df.parse(temp1[2])
+                                                    .getTime()
+                                    ) / 1000
+                            );
+                            if (diff > Time_Threshold) {
+                                stayPoint = new ArrayList<>();
+                                for (int t = i; t < j; t++) {
+                                    lng = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[0]);
+                                    lat = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[1]);
+                                    Observation sample = new Observation(new GHPoint(lat, lng));
+                                    stayPoint.add(sample);
+                                }
+                                stayroutePointMap.put(stayIndex, stayPoint);
+                                stayIndex ++;
+                            }
+                            break;
+                        }
+                        else if (j == pointNum - 1) {
+                            //deal the last points
+                            diff = (int) (
+                                    (
+                                            df.parse(temp2[2]).getTime() - df.parse(temp1[2])
+                                                    .getTime()
+                                    ) / 1000
+                            );
+                            if (diff > Time_Threshold) {
+                                stayPoint = new ArrayList<>();
+                                for (int t = i; t < j; t++) {
+                                    lng = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[0]);
+                                    lat = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[1]);
+                                    Observation sample = new Observation(new GHPoint(lat, lng));
+                                    stayPoint.add(sample);
+                                }
+                                stayroutePointMap.put(stayIndex, stayPoint);
+                            }
+                        }
+                        j += 1;
+                    }
+
+                    routeArray.add((String)arrayList.get(i));
+
+                    i = j;
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
+                    return null;
+                }
+            }
+
+            routePoint = trajectoryReduce(routeArray);
+
+            System.out.println("routePoint size = " + routePoint.size());
+
+            stayroutePointMap.put(routeIndex, routePoint);
+
+            return stayroutePointMap;
+        }
+
+        public static ArrayList<Observation> trajectoryReduce(ArrayList arrayList) {
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+
+            int i = 0;
+            int j = 0;
+            String[] temp1 = null;
+            String[] temp2 = null;
+            int diff = 0;
+            double lng,lat;
+
+            ArrayList<Observation> samples = new ArrayList<>();
             ArrayList<Double> lngList = new ArrayList<>();
             ArrayList<Double> latList = new ArrayList<>();
-            int slide = 0;
-            double lng = 0.0;
-            double lat = 0.0;
 
-            temp = (String) arrayList.get(0);
-            String[] row = temp.split(",");
-            lngList.add(Double.parseDouble(row[0]));
-            latList.add(Double.parseDouble(row[1]));
+            int pointNum = arrayList.size();
 
-            for (int i = 0; i < diff_seq.size(); i++) {
-                slide += diff_seq.get(i);
-                temp = (String) arrayList.get(i+1);
-                String[] diff_row = temp.split(",");
+            try {
+                while (i < pointNum) {
+                    j = i + 1;
 
-                if (slide <= Interval_Minutes) {
-                    lngList.add(Double.parseDouble(diff_row[0]));
-                    latList.add(Double.parseDouble(diff_row[1]));
-                    continue;
-                }
+                    temp1 = ((String) arrayList.get(i)).split(",");
+                    while (j < pointNum) {
+                        temp2 = ((String) arrayList.get(j)).split(",");
+                        diff = (int) (
+                                (
+                                        df.parse(temp2[2]).getTime() - df.parse(temp1[2])
+                                                .getTime()
+                                ) / 1000
+                        );
 
-                if (lngList.size() > 0) {
-                    lng = lngList.stream().collect(Collectors.averagingDouble(x -> x));
-                    lat = latList.stream().collect(Collectors.averagingDouble(x -> x));
-                    lngList.clear();
-                    latList.clear();
-                    if (i > 0) {
-                        i--;
+                        if (diff > Reduce_Seconds) {
+                            break;
+                        }
+
+                        lngList.add(Double.parseDouble(temp2[0]));
+                        latList.add(Double.parseDouble(temp2[1]));
+                        j += 1;
                     }
-                }
-                else {
-                    lng = Double.parseDouble(diff_row[0]);
-                    lat = Double.parseDouble(diff_row[1]);
-                }
 
-                Observation sample = new Observation(new GHPoint(lat,lng));
-                samples.add(sample);
-                slide = 0;
+                    if (lngList.size() > 0) {
+                        lngList.add(Double.parseDouble(temp1[0]));
+                        latList.add(Double.parseDouble(temp1[1]));
+                        lng = lngList.stream().collect(Collectors.averagingDouble(x -> x));
+                        lat = latList.stream().collect(Collectors.averagingDouble(x -> x));
+                        Observation sample = new Observation(new GHPoint(lat, lng));
+                        samples.add(sample);
+                        lngList.clear();
+                        latList.clear();
+                    }
+                    else {
+                        lng = Double.parseDouble(temp1[0]);
+                        lat = Double.parseDouble(temp1[1]);
+                        Observation sample = new Observation(new GHPoint(lat, lng));
+                        samples.add(sample);
+                    }
+                    i = j;
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
             }
 
             return samples;
+        }
+
+        public static List<Observation> trajectoryDPReduce(ArrayList arrayList) {
+            ArrayList<Observation> tmpObservation = new ArrayList<>();
+            List<Observation> reduced = null;
+            String temp = null;
+
+            try {
+                for (int i = 0; i < arrayList.size(); i++) {
+                    temp = (String) arrayList.get(i);
+                    String[] row = temp.split(",");
+                    Observation sample = new Observation(
+                            new GHPoint(Double.parseDouble(row[1]),
+                                    Double.parseDouble(row[0])));
+                    tmpObservation.add(sample);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            reduced = DouglasPeuckerUtil.DouglasPeucker(tmpObservation, 0.001);
+            return reduced;
         }
     }
 
@@ -414,6 +582,18 @@ public class RoutingExample {
         return brng;
     }
 
+    private static double getDistance (double lonA1,double latA1,double lonA2,double latA2) {
+        double lon1 = lonA1* Math.PI /180;
+        double lat1 = latA1* Math.PI /180;
+        double lon2 = lonA2* Math.PI /180;
+        double lat2 = latA2* Math.PI /180;
+        double dlon = lon2 - lon1;
+        double dlat = lat2 - lat1;
+        double a = Math.pow(Math.sin(dlat / 2), 2) + Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(dlon / 2), 2);
+        double c = 2 * Math.asin(Math.sqrt(a));
+        return c * 6371 * 1000;
+    }
+
     public static void matchingTest(GraphHopper hopper) {
 
         PMap hints = new PMap();
@@ -426,11 +606,17 @@ public class RoutingExample {
         System.out.println("original size = " + origList.size());
         ArrayList<String> cleanList = InputFormatMy.trajectoryClean(origList);
         System.out.println("clean size = " + cleanList.size());
-        ArrayList<Observation> samples = InputFormatMy.trajectoryReduce(cleanList);
+        ArrayList<String> denoiseList = InputFormatMy.trajectoryDenoise(cleanList);
+        System.out.println("denoise size = " + denoiseList.size());
+
+
+        /*ArrayList<Observation> samples = InputFormatMy.trajectoryReduce(denoise);
         System.out.println("samples size = " + samples.size());
 
         HashMap<Integer, ArrayList<Observation>> stayroutePointMap =
-                mapMatching.trajectoryCalculate(samples);
+                mapMatching.trajectoryCalculate(samples);*/
+
+        HashMap<Integer, ArrayList<Observation>> stayroutePointMap = InputFormatMy.StayPoint_Detection(denoiseList);
 
         ArrayList<Observation> routePoint = null;
         ArrayList<Observation> sortedPoint = null;
@@ -545,7 +731,7 @@ public class RoutingExample {
 
             sb.append("{  \"coordinates\": [\n    [\n");
 
-            System.out.println("list_edge.size() = " + samples_result.length);
+            //System.out.println("list_edge.size() = " + samples_result.length);
 
 
             //for (int i = 0; i < samples_result.length - 1; i++) {
