@@ -325,7 +325,6 @@ public class RoutingExample {
                         if (dis2 < Delta_Distance && diff2 < Delta_Seconds) {
                             System.out.println("denoise " + arrayList.get(i));
                             denoise.remove(arrayList.get(i));
-                            continue;
                         }
 
                         tempn1 = ((String)arrayList.get(i-1)).split(",");
