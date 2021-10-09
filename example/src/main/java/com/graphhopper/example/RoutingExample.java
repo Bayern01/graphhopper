@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -54,10 +55,11 @@ import org.json.JSONTokener;
 
 public class RoutingExample {
 
-    static int Interval_Seconds = 1;
+    static int Interval_Seconds = 5;
+    static int Speed_Threshold = 50;
     static int Reduce_Seconds = 60 * 5;
     static int Delta_Distance = 800;
-    static int Delta_Seconds = 600;
+    static int Delta_Seconds = 60 * 15;
     static int Distance_Threshold = 800;
     static int Time_Threshold = 60 * 15;
 
@@ -215,27 +217,29 @@ public class RoutingExample {
             }
         }
 
-        public static ArrayList<String> trajectoryClean(ArrayList arrayList) {
+        //Clean duplicated in short time
+        public static ArrayList<String> trajClean(ArrayList arrayList) {
             ArrayList<String> clean = new ArrayList<>();
-            String temp = null;
             DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
-            Long last_time;
-            Long this_time;
+            String[] temp = null;
 
-            ArrayList<Integer> diff_seq = new ArrayList<>();
+            HashMap<String, String> distinct_map = new HashMap<>();
 
             try {
-                for (int i = 1; i < arrayList.size(); i++) {
-                    temp = (String) arrayList.get(i - 1);
-                    String[] last_row = temp.split(",");
-                    last_time = df.parse(last_row[2]).getTime();
-                    temp = (String) arrayList.get(i);
-                    String[] row = temp.split(",");
-                    this_time = df.parse(row[2]).getTime();
+                for (int i = 0; i < arrayList.size(); i++) {
+                    temp = ((String)arrayList.get(i)).split(",");
 
-                    int diff = (int) ((this_time - last_time) / 1000);
+                    long round_interval = (long) ((Long.parseLong(temp[2]) / 1000 / Interval_Seconds));
 
-                    diff_seq.add(diff);
+                    String str_key = temp[0] + "," + temp[1] + "," + round_interval;
+
+                    if (!distinct_map.containsKey(str_key)) {
+                        distinct_map.put(str_key, (String)arrayList.get(i));
+                        clean.add((String)arrayList.get(i));
+                    }
+                    else {
+                        System.out.println("clean " + arrayList.get(i));
+                    }
                 }
             }
             catch (Exception e) {
@@ -243,17 +247,55 @@ public class RoutingExample {
                 return null;
             }
 
-            clean.add((String)arrayList.get(0));
-            for (int i = 0; i < diff_seq.size(); i++) {
-                if (diff_seq.get(i) > Interval_Seconds) {
-                    clean.add((String)arrayList.get(i+1));
-                }
-            }
-
             return clean;
         }
 
-        public static ArrayList<String> trajectoryDenoise(ArrayList arrayList) {
+        //Filter abnormal speed
+        public static ArrayList<String> trajFilter(ArrayList arrayList) {
+            ArrayList<String> filter = new ArrayList<>();
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+            String[] temp = null;
+            String[] tempn1 = null;
+
+            ArrayList<Integer> diff_seq = new ArrayList<>();
+
+            try {
+                for (int i = 1; i < arrayList.size(); i++) {
+                    temp = ((String)arrayList.get(i)).split(",");
+                    tempn1 = ((String)arrayList.get(i - 1)).split(",");
+
+                    int diff = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
+
+                    double dis = getDistance(Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
+                            Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]));
+
+                    if (diff != 0) {
+                        diff_seq.add((int) Math.round(dis / diff));
+                    }
+                    else {
+                        diff_seq.add(0);
+                    }
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            filter.add((String)arrayList.get(0));
+            for (int i = 0; i < diff_seq.size(); i++) {
+                if (diff_seq.get(i) <= Speed_Threshold) {
+                    filter.add((String)arrayList.get(i+1));
+                }
+                else {
+                    System.out.println("speed = " + diff_seq.get(i) + " filter " + arrayList.get(i+1));
+                }
+            }
+
+            return filter;
+        }
+
+        public static ArrayList<String> trajDenoise(ArrayList arrayList) {
             ArrayList<String> denoise = new ArrayList<>();
             denoise = (ArrayList<String>) arrayList.clone();
 
@@ -279,8 +321,9 @@ public class RoutingExample {
                         int diff2 = (int) ((df.parse(temp2[2]).getTime() - df.parse(temp1[2]).getTime()) / 1000);
 
                         if (dis2 < Delta_Distance && diff2 < Delta_Seconds) {
-                            //System.out.println("denoise.remove(i) " + arrayList.get(i));
+                            System.out.println("denoise " + arrayList.get(i));
                             denoise.remove(arrayList.get(i));
+                            continue;
                         }
 
                         tempn1 = ((String)arrayList.get(i-1)).split(",");
@@ -288,7 +331,7 @@ public class RoutingExample {
                                 Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
                         int diffn1 = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
                         if (dis1 < Delta_Distance && diffn1 < Delta_Seconds) {
-                            //System.out.println("denoise.remove(i+1) " + arrayList.get(i+1));
+                            System.out.println("denoise " + arrayList.get(i+1));
                             denoise.remove(arrayList.get(i+1));
                         }
                     }
@@ -390,7 +433,7 @@ public class RoutingExample {
                 }
             }
 
-            routePoint = trajectoryReduce(routeArray);
+            routePoint = trajReduce(routeArray);
 
             System.out.println("routePoint size = " + routePoint.size());
 
@@ -399,7 +442,7 @@ public class RoutingExample {
             return stayroutePointMap;
         }
 
-        public static ArrayList<Observation> trajectoryReduce(ArrayList arrayList) {
+        public static ArrayList<Observation> trajReduce(ArrayList arrayList) {
             DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
 
             int i = 0;
@@ -604,13 +647,17 @@ public class RoutingExample {
         //List<Observation> samples = InputFormatMy.formatFile("D:\\input\\ods\\zhang-1.json");
         ArrayList origList = InputFormatMy.formattxtFile("D:\\input\\ods\\fang-xiao.txt");
         System.out.println("original size = " + origList.size());
-        ArrayList<String> cleanList = InputFormatMy.trajectoryClean(origList);
+
+        ArrayList<String> cleanList = InputFormatMy.trajClean(origList);
         System.out.println("clean size = " + cleanList.size());
-        ArrayList<String> denoiseList = InputFormatMy.trajectoryDenoise(cleanList);
+
+        ArrayList<String> filterList = InputFormatMy.trajFilter(cleanList);
+        System.out.println("filter size = " + filterList.size());
+
+        ArrayList<String> denoiseList = InputFormatMy.trajDenoise(filterList);
         System.out.println("denoise size = " + denoiseList.size());
 
-
-        /*ArrayList<Observation> samples = InputFormatMy.trajectoryReduce(denoise);
+        /*ArrayList<Observation> samples = InputFormatMy.trajReduce(denoise);
         System.out.println("samples size = " + samples.size());
 
         HashMap<Integer, ArrayList<Observation>> stayroutePointMap =
