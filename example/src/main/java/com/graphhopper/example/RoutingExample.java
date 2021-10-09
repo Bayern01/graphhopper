@@ -21,10 +21,12 @@ import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
@@ -656,6 +658,16 @@ public class RoutingExample {
 
         ArrayList<String> denoiseList = InputFormatMy.trajDenoise(filterList);
         System.out.println("denoise size = " + denoiseList.size());
+
+        try (BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("D:\\input\\single\\denoise.txt"))) {
+            for (String tmp:denoiseList) {
+                bufferedWriter.write(tmp);
+                bufferedWriter.write("\n");
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
 
         /*ArrayList<Observation> samples = InputFormatMy.trajReduce(denoise);
         System.out.println("samples size = " + samples.size());
