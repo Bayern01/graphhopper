@@ -57,8 +57,10 @@ import org.json.JSONTokener;
 
 public class RoutingExample {
 
-    static int Interval_Seconds = 5;
-    static int Speed_Threshold = 50;
+    static int Interval_Seconds = 60;
+    static int Speed_Threshold = 350;
+    static int Max_Speed = 10000;
+    static int Degree_Threshold = 15;
     static int Reduce_Seconds = 60 * 5;
     static int Delta_Distance = 800;
     static int Delta_Seconds = 60 * 15;
@@ -231,7 +233,7 @@ public class RoutingExample {
                 for (int i = 0; i < arrayList.size(); i++) {
                     temp = ((String)arrayList.get(i)).split(",");
 
-                    long round_interval = (long) ((Long.parseLong(temp[2]) / 1000 / Interval_Seconds));
+                    long round_interval = (df.parse(temp[2]).getTime() / 1000 / Interval_Seconds);
 
                     String str_key = temp[0] + "," + temp[1] + "," + round_interval;
 
@@ -252,6 +254,42 @@ public class RoutingExample {
             return clean;
         }
 
+        public static ArrayList<String> trajClean_dis(ArrayList arrayList) {
+            ArrayList<String> clean = new ArrayList<>();
+            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+            String[] temp = null;
+            String[] tempn1 = null;
+
+            ArrayList<Double> diff_seq = new ArrayList<>();
+
+            try {
+                for (int i = 1; i < arrayList.size(); i++) {
+                    temp = ((String)arrayList.get(i)).split(",");
+                    tempn1 = ((String)arrayList.get(i - 1)).split(",");
+
+                    int diff = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
+
+                    double dis = getDistance(Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
+                            Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]));
+
+                    diff_seq.add(dis);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            clean.add((String)arrayList.get(0));
+            for (int i = 0; i < diff_seq.size(); i++) {
+                if (diff_seq.get(i) > 0.00001) {
+                    clean.add((String)arrayList.get(i+1));
+                }
+            }
+
+            return clean;
+        }
+
         //Filter abnormal speed
         public static ArrayList<String> trajFilter(ArrayList arrayList) {
             ArrayList<String> filter = new ArrayList<>();
@@ -266,17 +304,15 @@ public class RoutingExample {
                     temp = ((String)arrayList.get(i)).split(",");
                     tempn1 = ((String)arrayList.get(i - 1)).split(",");
 
-                    int diff = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
+                    double diff = (double) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
 
                     double dis = getDistance(Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
                             Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]));
 
-                    if (diff != 0) {
-                        diff_seq.add((int) Math.round(dis / diff));
+                    if (diff < 0.1) {
+                        diff = 0.1;
                     }
-                    else {
-                        diff_seq.add(0);
-                    }
+                    diff_seq.add((int) Math.round(dis / diff));
                 }
             }
             catch (Exception e) {
@@ -286,18 +322,23 @@ public class RoutingExample {
 
             filter.add((String)arrayList.get(0));
             for (int i = 0; i < diff_seq.size(); i++) {
-                if (diff_seq.get(i) <= Speed_Threshold) {
+                if (diff_seq.get(i) > 0 && diff_seq.get(i) <= Speed_Threshold) {
+                //if (diff_seq.get(i) <= Speed_Threshold) {
                     filter.add((String)arrayList.get(i+1));
                 }
                 else {
                     System.out.println("speed = " + diff_seq.get(i) + " filter " + arrayList.get(i+1));
+                }
+
+                if (diff_seq.get(i) >= Max_Speed) {
+                    System.out.println("error coordinate = " + arrayList.get(i+1));
                 }
             }
 
             return filter;
         }
 
-        public static ArrayList<String> trajDenoise(ArrayList arrayList) {
+        public static ArrayList<String> trajDenoise_dis(ArrayList arrayList) {
             ArrayList<String> denoise = new ArrayList<>();
             denoise = (ArrayList<String>) arrayList.clone();
 
@@ -343,6 +384,52 @@ public class RoutingExample {
                 return null;
             }
 
+            return denoise;
+        }
+
+        public static ArrayList<String> trajDenoise(ArrayList arrayList) {
+            ArrayList<String> denoise = new ArrayList<>();
+            denoise = (ArrayList<String>) arrayList.clone();
+
+            String[] temp = null;
+            String[] temp1 = null;
+            String[] temp2 = null;
+
+            try {
+                for (int i = 0; i < arrayList.size() - 2; i++) {
+                    temp = ((String)arrayList.get(i)).split(",");
+                    temp1 = ((String)arrayList.get(i+1)).split(",");
+                    temp2 = ((String)arrayList.get(i+2)).split(",");
+                    int degree = getDegree(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                            Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
+                            Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
+
+                    if (degree < Degree_Threshold ) {
+                            System.out.println("degree = " + degree + " denoise " + arrayList.get(i+1));
+                            denoise.remove(arrayList.get(i+1));
+                        }
+                    }
+                }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
+
+            try {
+                temp = (denoise.get(denoise.size() - 1)).split(",");
+                temp1 = (denoise.get(denoise.size() - 2)).split(",");
+                double dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                        Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
+
+                if (dis > 1500) {
+                    //remove the last dispersed point
+                    denoise.remove(denoise.size() - 1);
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                return null;
+            }
             return denoise;
         }
 
@@ -638,6 +725,20 @@ public class RoutingExample {
         return c * 6371 * 1000;
     }
 
+    private static int getDegree(double vertexPointX, double vertexPointY, double point0X, double point0Y, double point1X, double point1Y) {
+        //向量的点乘
+        double vector = (point0X - vertexPointX) * (point1X - vertexPointX) + (point0Y - vertexPointY) * (point1Y - vertexPointY);
+        //向量的模乘
+        double sqrt = Math.sqrt(
+                (Math.abs((point0X - vertexPointX) * (point0X - vertexPointX)) + Math.abs((point0Y - vertexPointY) * (point0Y - vertexPointY)))
+                        * (Math.abs((point1X - vertexPointX) * (point1X - vertexPointX)) + Math.abs((point1Y - vertexPointY) * (point1Y - vertexPointY)))
+        );
+        //反余弦计算弧度
+        double radian = Math.acos(vector / sqrt);
+        //弧度转角度制
+        return (int) (180 * radian / Math.PI);
+    }
+
     public static void matchingTest(GraphHopper hopper) {
 
         PMap hints = new PMap();
@@ -652,10 +753,10 @@ public class RoutingExample {
         ArrayList<String> cleanList = InputFormatMy.trajClean(origList);
         System.out.println("clean size = " + cleanList.size());
 
-        ArrayList<String> filterList = InputFormatMy.trajFilter(cleanList);
-        System.out.println("filter size = " + filterList.size());
+        /*ArrayList<String> filterList = InputFormatMy.trajFilter(cleanList);
+        System.out.println("filter size = " + filterList.size());*/
 
-        ArrayList<String> denoiseList = InputFormatMy.trajDenoise(filterList);
+        ArrayList<String> denoiseList = InputFormatMy.trajDenoise(cleanList);
         System.out.println("denoise size = " + denoiseList.size());
 
         try (BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter("D:\\input\\single\\denoise.txt"))) {
