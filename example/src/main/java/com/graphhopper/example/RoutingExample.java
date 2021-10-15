@@ -57,13 +57,11 @@ import org.json.JSONTokener;
 
 public class RoutingExample {
 
-    static int Interval_Seconds = 60;
+    static int Interval_Seconds = 60 * 15;
     static int Speed_Threshold = 350;
-    static int Max_Speed = 10000;
-    static int Degree_Threshold = 15;
+    static int Max_Distance= 1500;
+    static int Degree_Threshold = 30;
     static int Reduce_Seconds = 60 * 5;
-    static int Delta_Distance = 800;
-    static int Delta_Seconds = 60 * 15;
     static int Distance_Threshold = 800;
     static int Time_Threshold = 60 * 15;
 
@@ -297,7 +295,7 @@ public class RoutingExample {
             String[] temp = null;
             String[] tempn1 = null;
 
-            ArrayList<Integer> diff_seq = new ArrayList<>();
+            ArrayList<Double> diff_seq = new ArrayList<>();
 
             try {
                 for (int i = 1; i < arrayList.size(); i++) {
@@ -309,10 +307,7 @@ public class RoutingExample {
                     double dis = getDistance(Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
                             Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]));
 
-                    if (diff < 0.1) {
-                        diff = 0.1;
-                    }
-                    diff_seq.add((int) Math.round(dis / diff));
+                    diff_seq.add(dis);
                 }
             }
             catch (Exception e) {
@@ -322,69 +317,16 @@ public class RoutingExample {
 
             filter.add((String)arrayList.get(0));
             for (int i = 0; i < diff_seq.size(); i++) {
-                if (diff_seq.get(i) > 0 && diff_seq.get(i) <= Speed_Threshold) {
-                //if (diff_seq.get(i) <= Speed_Threshold) {
+                //if (diff_seq.get(i) > 0 && diff_seq.get(i) <= Speed_Threshold) {
+                if (diff_seq.get(i) > 0) {
                     filter.add((String)arrayList.get(i+1));
                 }
                 else {
-                    System.out.println("speed = " + diff_seq.get(i) + " filter " + arrayList.get(i+1));
-                }
-
-                if (diff_seq.get(i) >= Max_Speed) {
-                    System.out.println("error coordinate = " + arrayList.get(i+1));
+                    System.out.println("dis = " + diff_seq.get(i) + " filter " + arrayList.get(i+1));
                 }
             }
 
             return filter;
-        }
-
-        public static ArrayList<String> trajDenoise_dis(ArrayList arrayList) {
-            ArrayList<String> denoise = new ArrayList<>();
-            denoise = (ArrayList<String>) arrayList.clone();
-
-            String[] temp = null;
-            String[] temp1 = null;
-            String[] temp2 = null;
-            String[] tempn1 = null;
-            DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
-
-            try {
-                for (int i = 2; i < denoise.size() - 2; i++) {
-                    temp = ((String)arrayList.get(i)).split(",");
-                    temp1 = ((String)arrayList.get(i+1)).split(",");
-                    double dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                            Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
-
-                    int diff = (int) ((df.parse(temp1[2]).getTime() - df.parse(temp[2]).getTime()) / 1000);
-
-                    if (dis > Delta_Distance && diff < Delta_Seconds) {
-                        temp2 = ((String)arrayList.get(i+2)).split(",");
-                        double dis2 = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                                Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
-                        int diff2 = (int) ((df.parse(temp2[2]).getTime() - df.parse(temp1[2]).getTime()) / 1000);
-
-                        if (dis2 < Delta_Distance && diff2 < Delta_Seconds) {
-                            System.out.println("denoise " + arrayList.get(i));
-                            denoise.remove(arrayList.get(i));
-                        }
-
-                        tempn1 = ((String)arrayList.get(i-1)).split(",");
-                        double dis1 = getDistance(Double.parseDouble(tempn1[0]), Double.parseDouble(tempn1[1]),
-                                Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
-                        int diffn1 = (int) ((df.parse(temp[2]).getTime() - df.parse(tempn1[2]).getTime()) / 1000);
-                        if (dis1 < Delta_Distance && diffn1 < Delta_Seconds) {
-                            System.out.println("denoise " + arrayList.get(i+1));
-                            denoise.remove(arrayList.get(i+1));
-                        }
-                    }
-                }
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-                return null;
-            }
-
-            return denoise;
         }
 
         public static ArrayList<String> trajDenoise(ArrayList arrayList) {
@@ -394,35 +336,71 @@ public class RoutingExample {
             String[] temp = null;
             String[] temp1 = null;
             String[] temp2 = null;
+            double dis = 0;
+            double degree = 0;
+            int pointNum = arrayList.size();
+            int i = 0;
+            int j = 0;
 
-            try {
-                for (int i = 0; i < arrayList.size() - 2; i++) {
-                    temp = ((String)arrayList.get(i)).split(",");
-                    temp1 = ((String)arrayList.get(i+1)).split(",");
-                    temp2 = ((String)arrayList.get(i+2)).split(",");
-                    int degree = getDegree(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                            Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
-                            Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
+            while (i < pointNum - 2) {
+                j = i + 1;
+                try {
+                    temp = ((String) arrayList.get(i)).split(",");
 
-                    if (degree < Degree_Threshold ) {
-                            System.out.println("degree = " + degree + " denoise " + arrayList.get(i+1));
-                            denoise.remove(arrayList.get(i+1));
+                    while (j < pointNum - 1) {
+                        temp1 = ((String) arrayList.get(j)).split(",");
+                        temp2 = ((String) arrayList.get(j + 1)).split(",");
+
+                        if (temp1[0].equals(temp[0]) && temp1[1].equals(temp[1])) {
+                            break;
                         }
+
+                        if (temp1[0].equals(temp2[0]) && temp1[1].equals(temp2[1])) {
+                            dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                                    Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
+                            if (dis > Max_Distance) {
+                                System.out.println("dis = " + dis + " denoise " + arrayList.get(j));
+                                denoise.remove(arrayList.get(j));
+                                denoise.remove(arrayList.get(j+1));
+                                j += 2;
+                                continue;
+                            }
+                            else {
+                                j += 1;
+                                break;
+                            }
+                        }
+
+                        degree = getDegree(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                                Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
+                                Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
+
+                        if (degree < Degree_Threshold) {
+                            System.out.println("degree = " + degree + " denoise " + arrayList.get(j));
+                            denoise.remove(arrayList.get(j));
+                            j += 1;
+                            continue;
+                        }
+                        break;
                     }
+                    i = j;
                 }
-            catch (Exception e) {
-                e.printStackTrace();
-                return null;
+
+                catch (Exception e) {
+                    e.printStackTrace();
+                    return null;
+                }
             }
 
             try {
                 temp = (denoise.get(denoise.size() - 1)).split(",");
                 temp1 = (denoise.get(denoise.size() - 2)).split(",");
-                double dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
+                dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
                         Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
 
-                if (dis > 1500) {
+                if (dis > Max_Distance) {
                     //remove the last dispersed point
+                    System.out.println("dis = " + dis + " denoise " + denoise.get(denoise.size() - 1));
                     denoise.remove(denoise.size() - 1);
                 }
             }
@@ -725,7 +703,10 @@ public class RoutingExample {
         return c * 6371 * 1000;
     }
 
-    private static int getDegree(double vertexPointX, double vertexPointY, double point0X, double point0Y, double point1X, double point1Y) {
+    private static double getDegree(double vertexPointX, double vertexPointY, double point0X, double point0Y, double point1X, double point1Y) {
+        if (vertexPointX == point1X && vertexPointY == point1Y) {
+            return getDistance(vertexPointX, vertexPointY, point0X, point0Y);
+        }
         //向量的点乘
         double vector = (point0X - vertexPointX) * (point1X - vertexPointX) + (point0Y - vertexPointY) * (point1Y - vertexPointY);
         //向量的模乘
@@ -736,7 +717,7 @@ public class RoutingExample {
         //反余弦计算弧度
         double radian = Math.acos(vector / sqrt);
         //弧度转角度制
-        return (int) (180 * radian / Math.PI);
+        return 180 * radian / Math.PI;
     }
 
     public static void matchingTest(GraphHopper hopper) {
