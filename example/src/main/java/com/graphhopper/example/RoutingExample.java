@@ -890,12 +890,15 @@ public class RoutingExample {
 
             //System.out.println("list_edge.size() = " + samples_result.length);
 
+            double route_dis = 0;
+            double last_lon = 0;
+            double last_lat = 0;
 
-            //for (int i = 0; i < samples_result.length - 1; i++) {
-            for (int i = 0; i < list_edge.size() -1; i++) {
-                //EdgeMatch edge_match = samples_result[i];
+            for (int i = 0; i < samples_result.length - 1; i++) {
+            //for (int i = 0; i < list_edge.size() -1; i++) {
+                EdgeMatch edge_match = samples_result[i];
 
-                EdgeMatch edge_match = list_edge.get(i);
+                //EdgeMatch edge_match = list_edge.get(i);
                 List<State> list_state = edge_match.getStates();
 
                 int internalEdgeId =  edge_match.getEdgeState().getEdge();
@@ -914,6 +917,7 @@ public class RoutingExample {
                         " lat = " + String.format("%.6f", internalNodeId_lat));
 
                 if (i > 0) {
+                    route_dis += getDistance(internalNodeId_lon, internalNodeId_lat, last_lon, last_lat);
                     sb.append(", ");
                 }
                 sb.append('[');
@@ -921,6 +925,10 @@ public class RoutingExample {
                 sb.append(',');
                 sb.append(String.format("%.6f", internalNodeId_lat));
                 sb.append(']');
+
+                last_lon = internalNodeId_lon;
+                last_lat = internalNodeId_lat;
+
 
 /*                for (int j = 0; j < list_state.size(); j++) {
                     if (i > 0) {
@@ -944,6 +952,7 @@ public class RoutingExample {
             System.out.println("");*/
             System.out.println("*****OSM Node Point*****");
             System.out.println(sb.toString());
+            System.out.println("route distance = " + String.format("%.2f", route_dis / 1000) + " Km");
 
             System.out.println("match took: " + matchSW.getMillis() + " ms");
         }
