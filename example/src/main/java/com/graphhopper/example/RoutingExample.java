@@ -58,7 +58,6 @@ import org.json.JSONTokener;
 public class RoutingExample {
 
     static int Interval_Seconds = 60 * 15;
-    static int Speed_Threshold = 350;
     static int Max_Distance= 1500;
     static int Degree_Threshold = 30;
     static int Reduce_Seconds = 60 * 5;
