@@ -333,57 +333,77 @@ public class RoutingExample {
             ArrayList<String> denoise = new ArrayList<>();
             denoise = (ArrayList<String>) arrayList.clone();
 
-            String[] temp = null;
-            String[] temp1 = null;
-            String[] temp2 = null;
+            String[] prev = null;
+            String[] curr = null;
+            String[] next = null;
             double dis = 0;
             double degree = 0;
             int pointNum = arrayList.size();
-            int i = 0;
-            int j = 0;
+            int left = 0;
+            int right = 0;
 
-            while (i < pointNum - 2) {
-                j = i + 1;
+            while (left < pointNum - 2) {
+                right = left + 1;
                 try {
-                    temp = ((String) arrayList.get(i)).split(",");
+                    prev = ((String) arrayList.get(left)).split(",");
 
-                    while (j < pointNum - 1) {
-                        temp1 = ((String) arrayList.get(j)).split(",");
-                        temp2 = ((String) arrayList.get(j + 1)).split(",");
+                    while (right < pointNum - 1) {
+                        curr = ((String) arrayList.get(right)).split(",");
+                        next = ((String) arrayList.get(right + 1)).split(",");
 
-                        if (temp1[0].equals(temp[0]) && temp1[1].equals(temp[1])) {
+                        //curr = prev , move the left window one step
+                        if (curr[0].equals(prev[0]) && curr[1].equals(prev[1])) {
                             break;
                         }
 
-                        if (temp1[0].equals(temp2[0]) && temp1[1].equals(temp2[1])) {
-                            dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                                    Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
+                        //curr = next
+                        if (curr[0].equals(next[0]) && curr[1].equals(next[1])) {
+                            dis = getDistance(Double.parseDouble(curr[0]), Double.parseDouble(curr[1]),
+                                    Double.parseDouble(prev[0]), Double.parseDouble(prev[1]));
                             if (dis > Max_Distance) {
-                                System.out.println("dis = " + dis + " denoise " + arrayList.get(j));
-                                denoise.remove(arrayList.get(j));
-                                denoise.remove(arrayList.get(j+1));
-                                j += 2;
+                                //remove next two, move right window, left window not change
+                                System.out.println("dis = " + dis + " denoise " + arrayList.get(right));
+                                denoise.remove(arrayList.get(right));
+                                denoise.remove(arrayList.get(right+1));
+                                right += 2;
                                 continue;
                             }
                             else {
-                                j += 1;
+                                right += 1;
                                 break;
                             }
                         }
 
-                        degree = getDegree(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                                Double.parseDouble(temp[0]), Double.parseDouble(temp[1]),
-                                Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1]));
+                        //prev = next
+                        if (prev[0].equals(next[0]) && prev[1].equals(next[1])) {
+                            dis = getDistance(Double.parseDouble(curr[0]), Double.parseDouble(curr[1]),
+                                    Double.parseDouble(prev[0]), Double.parseDouble(prev[1]));
+                            if (dis > Max_Distance) {
+                                //remove next two, move right window, left window not change
+                                System.out.println("dis = " + dis + " denoise " + arrayList.get(right));
+                                denoise.remove(arrayList.get(right));
+                                right += 1;
+                                continue;
+                            }
+                            //valid point, move the slide window
+                            break;
+                        }
+
+                        degree = getDegree(Double.parseDouble(curr[0]), Double.parseDouble(curr[1]),
+                                Double.parseDouble(prev[0]), Double.parseDouble(prev[1]),
+                                Double.parseDouble(next[0]), Double.parseDouble(next[1]));
 
                         if (degree < Degree_Threshold) {
-                            System.out.println("degree = " + degree + " denoise " + arrayList.get(j));
-                            denoise.remove(arrayList.get(j));
-                            j += 1;
+                            System.out.println("degree = " + degree + " denoise " + arrayList.get(right));
+                            denoise.remove(arrayList.get(right));
+                            right += 1;
                             continue;
                         }
+                        //valid point, move the slide window
                         break;
                     }
-                    i = j;
+                    //move window
+                    left = right;
                 }
 
                 catch (Exception e) {
@@ -393,10 +413,10 @@ public class RoutingExample {
             }
 
             try {
-                temp = (denoise.get(denoise.size() - 1)).split(",");
-                temp1 = (denoise.get(denoise.size() - 2)).split(",");
-                dis = getDistance(Double.parseDouble(temp1[0]), Double.parseDouble(temp1[1]),
-                        Double.parseDouble(temp[0]), Double.parseDouble(temp[1]));
+                prev = (denoise.get(denoise.size() - 1)).split(",");
+                curr = (denoise.get(denoise.size() - 2)).split(",");
+                dis = getDistance(Double.parseDouble(curr[0]), Double.parseDouble(curr[1]),
+                        Double.parseDouble(prev[0]), Double.parseDouble(prev[1]));
 
                 if (dis > Max_Distance) {
                     //remove the last dispersed point
@@ -704,9 +724,6 @@ public class RoutingExample {
     }
 
     private static double getDegree(double vertexPointX, double vertexPointY, double point0X, double point0Y, double point1X, double point1Y) {
-        if (vertexPointX == point1X && vertexPointY == point1Y) {
-            return getDistance(vertexPointX, vertexPointY, point0X, point0Y);
-        }
         //向量的点乘
         double vector = (point0X - vertexPointX) * (point1X - vertexPointX) + (point0Y - vertexPointY) * (point1Y - vertexPointY);
         //向量的模乘
