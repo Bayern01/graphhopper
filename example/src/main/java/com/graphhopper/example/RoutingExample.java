@@ -734,8 +734,13 @@ public class RoutingExample {
         }
 
         double dis = 0;
+        double confidence = 0.8;
         for (Observation latLng : distctlist) {
             dis += getDistance(latLng.getPoint().getLon(), latLng.getPoint().getLat(), centroidX, centroidY);
+            if (latLng.getRadius() == Indoor_Radius) {
+                //indoor confidence
+                confidence = 1;
+            }
         }
 
         if (distctlist.size() == 1) {
@@ -745,7 +750,7 @@ public class RoutingExample {
         double circleX = 0, circleY = 0;
         double dLat = 0, dLng = 0;
         int Multi_Circle = 32;
-        double ratio = dis / distctlist.size() / 6367000.0;
+        double ratio = dis / confidence / distctlist.size() / 6367000.0;
         StringBuilder sb_stay = new StringBuilder();
         sb_stay.append("{  \"coordinates\": [\n    [\n");
         for (int i = 0; i < Multi_Circle; i++) {
@@ -776,7 +781,7 @@ public class RoutingExample {
         System.out.println("***** Stay Circle " +  " *****");
         System.out.println(sb_stay.toString());
 
-        return new Observation(new GHPoint(centroidY, centroidX), (int)dis / distctlist.size());
+        return new Observation(new GHPoint(centroidY, centroidX), (int)(dis / confidence / distctlist.size()));
     }
 
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
