@@ -739,7 +739,7 @@ public class RoutingExample {
         }
 
         if (distctlist.size() == 1) {
-            dis = Outdoor_Radius;
+            dis = distctlist.get(0).getRadius();
         }
 
         double circleX = 0, circleY = 0;
