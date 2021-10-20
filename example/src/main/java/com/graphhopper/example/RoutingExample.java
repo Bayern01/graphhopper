@@ -56,7 +56,7 @@ public class RoutingExample {
     static int Distance_Threshold = 800;
     static int Time_Threshold = 60 * 15;
     static int Outdoor_Radius = 800;
-    static int Indoor_Radius = 100;
+    static int Indoor_Radius = 200;
 
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
@@ -487,6 +487,7 @@ public class RoutingExample {
                                 }
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayPoint = null;
+                                i = j;
                             }
                             break;
                         }
@@ -522,6 +523,7 @@ public class RoutingExample {
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayIndex ++;
                                 stayPoint = null;
+                                i = j;
                             }
                             break;
                         }
@@ -530,7 +532,7 @@ public class RoutingExample {
 
                     routeArray.add((String)arrayList.get(i));
 
-                    i = j;
+                    i += 1;
                 }
                 catch (Exception e) {
                     e.printStackTrace();
@@ -720,37 +722,56 @@ public class RoutingExample {
     }
 
     public static Observation getWeightedLocation(ArrayList<Observation> origList) {
-        ArrayList<Observation> distctlist=(ArrayList) origList.stream().distinct().collect(Collectors.toList());
+        ArrayList<Observation> weightedList = new ArrayList<>();
+
+        int ct_indoor = 0;
+        // outdoor: distinct ; indoor: not distinct
+        for (Observation o : origList) {
+            if (o.getRadius() == Outdoor_Radius) {
+                if (!weightedList.contains(o)) {
+                    weightedList.add(o);
+                }
+            }
+            else {
+                weightedList.add(o);
+                ct_indoor ++;
+            }
+        }
 
         int fix = 1000;
         double centroidX = 0, centroidY = 0, plusW = 0;
-        for (Observation latLng : distctlist) {
+
+        for (Observation latLng : weightedList) {
             plusW += fix / latLng.getRadius();
         }
 
-        for (Observation latLng : distctlist) {
+        for (Observation latLng: weightedList) {
             centroidX += latLng.getPoint().getLon() * ((fix / latLng.getRadius())  / plusW);
             centroidY += latLng.getPoint().getLat() * ((fix / latLng.getRadius())  / plusW);
         }
 
         double dis = 0;
         double confidence = 0.8;
-        for (Observation latLng : distctlist) {
+        double radius = 0;
+        if (ct_indoor >= 2) {
+            confidence = 1.0;
+        }
+        for (Observation latLng : weightedList) {
             dis += getDistance(latLng.getPoint().getLon(), latLng.getPoint().getLat(), centroidX, centroidY);
             if (latLng.getRadius() == Indoor_Radius) {
-                //indoor confidence
-                confidence = 1;
+                centroidX = latLng.getPoint().getLon();
+                centroidY = latLng.getPoint().getLat();
             }
         }
 
-        if (distctlist.size() == 1) {
-            dis = distctlist.get(0).getRadius();
+        if (weightedList.size() == 1) {
+            dis = weightedList.get(0).getRadius();
         }
 
         double circleX = 0, circleY = 0;
         double dLat = 0, dLng = 0;
         int Multi_Circle = 32;
-        double ratio = dis / confidence / distctlist.size() / 6367000.0;
+        double ratio = dis / confidence / weightedList.size() / 6367000.0;
         StringBuilder sb_stay = new StringBuilder();
         sb_stay.append("{  \"coordinates\": [\n    [\n");
         for (int i = 0; i < Multi_Circle; i++) {
@@ -778,10 +799,12 @@ public class RoutingExample {
         sb_stay.append(String.format("%.6f", centroidY + Math.toDegrees((dLat))));
         sb_stay.append(']');
         sb_stay.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
-        System.out.println("***** Stay Circle " +  " *****");
+        System.out.println("***** Stay Circle " + " *****");
         System.out.println(sb_stay.toString());
-
-        return new Observation(new GHPoint(centroidY, centroidX), (int)(dis / confidence / distctlist.size()));
+        System.out.println("centroid coord = " + centroidX + "," + centroidY +
+                "  and radius = " + (int)(dis / confidence / weightedList.size()) +
+                "  and confidence = " + confidence);
+        return new Observation(new GHPoint(centroidY, centroidX), (int)(dis / confidence / weightedList.size()));
     }
 
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
@@ -892,9 +915,6 @@ public class RoutingExample {
                 System.out.println(sb_stay.toString());
 
                 Observation centroid = getWeightedLocation(stayroutePointMap.get(key));
-                System.out.println("centroid coord = " +
-                        centroid.getPoint().getLon() + "," +
-                        centroid.getPoint().getLat() + "  and radius = " + centroid.getRadius());
 
                 continue;
             }
