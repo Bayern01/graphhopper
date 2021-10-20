@@ -12,20 +12,14 @@ import com.graphhopper.matching.MapMatching;
 import com.graphhopper.matching.MatchResult;
 import com.graphhopper.matching.Observation;
 import com.graphhopper.matching.State;
-import com.graphhopper.routing.Path;
-import com.graphhopper.routing.util.EncodingManager;
-import com.graphhopper.routing.util.parsers.OSMSurfaceParser;
 import com.graphhopper.routing.weighting.custom.CustomProfile;
-import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -36,7 +30,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
@@ -47,7 +40,6 @@ import java.util.Set;
 import static com.graphhopper.json.Statement.If;
 import static com.graphhopper.json.Statement.Op.LIMIT;
 import static com.graphhopper.json.Statement.Op.MULTIPLY;
-import static com.graphhopper.util.FetchMode.ALL;
 
 import java.util.stream.Collectors;
 import org.json.JSONArray;
@@ -63,6 +55,8 @@ public class RoutingExample {
     static int Reduce_Seconds = 60 * 5;
     static int Distance_Threshold = 800;
     static int Time_Threshold = 60 * 15;
+    static int Outdoor_Radius = 800;
+    static int Indoor_Radius = 100;
 
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
@@ -437,11 +431,13 @@ public class RoutingExample {
             int j = 0;
             int stayIndex = 1;
             int routeIndex = -1;
-            String[] temp1 = null;
-            String[] temp2 = null;
-            String[] tempn1 = null;
+            String[] left = null;
+            String[] right = null;
+            String[] prev_right = null;
             int diff = 0;
             double lng,lat;
+            int radius;
+            double dis;
 
             ArrayList<Observation> stayPoint = null;
             ArrayList<Observation> routePoint = new ArrayList<>();
@@ -453,57 +449,81 @@ public class RoutingExample {
             while (i < pointNum) {
                 j = i + 1;
                 try {
+                    left = ((String) arrayList.get(i)).split(",");
                     while (j < pointNum) {
-                        temp1 = ((String) arrayList.get(i)).split(",");
-                        temp2 = ((String) arrayList.get(j)).split(",");
-                        tempn1 = ((String) arrayList.get(j - 1)).split(",");
-                        double dis =
-                                getDistance(Double.parseDouble(temp1[0]),
-                                        Double.parseDouble(temp1[1]),
-                                        Double.parseDouble(temp2[0]), Double.parseDouble(temp2[1])
+                        right = ((String) arrayList.get(j)).split(",");
+                        prev_right = ((String) arrayList.get(j - 1)).split(",");
+
+                        // deal the last point
+                        dis = getDistance(Double.parseDouble(left[0]),
+                                Double.parseDouble(left[1]),
+                                Double.parseDouble(right[0]), Double.parseDouble(right[1])
+                        );
+
+                        if (dis <= Distance_Threshold && j == pointNum - 1) {
+                            diff = (int) (
+                                    (
+                                            df.parse(right[2]).getTime() - df.parse(left[2])
+                                                    .getTime()
+                                    ) / 1000
+                            );
+
+                            if (diff >= Time_Threshold) {
+                                if (stayPoint == null) {
+                                    stayPoint = new ArrayList<>();
+                                }
+                                for (int t = i; t < j + 1; t++) {
+                                    lng = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[0]);
+                                    lat = Double.parseDouble(
+                                            ((String) arrayList.get(t)).split(",")[1]);
+                                    if (((String) arrayList.get(t)).split(",")[3].equals("outdoor")) {
+                                        radius = Outdoor_Radius;
+                                    } else {
+                                        radius = Indoor_Radius;
+                                    }
+                                    Observation sample = new Observation(new GHPoint(lat, lng), radius);
+                                    stayPoint.add(sample);
+                                }
+                                stayroutePointMap.put(stayIndex, stayPoint);
+                                stayPoint = null;
+                            }
+                            break;
+                        }
+
+                        dis = getDistance(Double.parseDouble(left[0]),
+                                        Double.parseDouble(left[1]),
+                                        Double.parseDouble(right[0]), Double.parseDouble(right[1])
                                 );
                         if (dis > Distance_Threshold) {
                             diff = (int) (
                                     (
-                                            df.parse(tempn1[2]).getTime() - df.parse(temp1[2])
+                                            df.parse(prev_right[2]).getTime() - df.parse(left[2])
                                                     .getTime()
                                     ) / 1000
                             );
-                            if (diff > Time_Threshold) {
-                                stayPoint = new ArrayList<>();
+                            if (diff >= Time_Threshold) {
+                                if (stayPoint == null) {
+                                    stayPoint = new ArrayList<>();
+                                }
                                 for (int t = i; t < j; t++) {
                                     lng = Double.parseDouble(
                                             ((String) arrayList.get(t)).split(",")[0]);
                                     lat = Double.parseDouble(
                                             ((String) arrayList.get(t)).split(",")[1]);
-                                    Observation sample = new Observation(new GHPoint(lat, lng));
+                                    if (((String) arrayList.get(t)).split(",")[3].equals("outdoor")) {
+                                        radius = Outdoor_Radius;
+                                    } else {
+                                        radius = Indoor_Radius;
+                                    }
+                                    Observation sample = new Observation(new GHPoint(lat, lng), radius);
                                     stayPoint.add(sample);
                                 }
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayIndex ++;
+                                stayPoint = null;
                             }
                             break;
-                        }
-                        else if (j == pointNum - 1) {
-                            //deal the last points
-                            diff = (int) (
-                                    (
-                                            df.parse(temp2[2]).getTime() - df.parse(temp1[2])
-                                                    .getTime()
-                                    ) / 1000
-                            );
-                            if (diff > Time_Threshold) {
-                                stayPoint = new ArrayList<>();
-                                for (int t = i; t < j; t++) {
-                                    lng = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[0]);
-                                    lat = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[1]);
-                                    Observation sample = new Observation(new GHPoint(lat, lng));
-                                    stayPoint.add(sample);
-                                }
-                                stayroutePointMap.put(stayIndex, stayPoint);
-                            }
                         }
                         j += 1;
                     }
@@ -699,6 +719,66 @@ public class RoutingExample {
         return sortedPoint;
     }
 
+    public static Observation getWeightedLocation(ArrayList<Observation> origList) {
+        ArrayList<Observation> distctlist=(ArrayList) origList.stream().distinct().collect(Collectors.toList());
+
+        int fix = 1000;
+        double centroidX = 0, centroidY = 0, plusW = 0;
+        for (Observation latLng : distctlist) {
+            plusW += fix / latLng.getRadius();
+        }
+
+        for (Observation latLng : distctlist) {
+            centroidX += latLng.getPoint().getLon() * ((fix / latLng.getRadius())  / plusW);
+            centroidY += latLng.getPoint().getLat() * ((fix / latLng.getRadius())  / plusW);
+        }
+
+        double dis = 0;
+        for (Observation latLng : distctlist) {
+            dis += getDistance(latLng.getPoint().getLon(), latLng.getPoint().getLat(), centroidX, centroidY);
+        }
+
+        if (distctlist.size() == 1) {
+            dis = Outdoor_Radius;
+        }
+
+        double circleX = 0, circleY = 0;
+        double dLat = 0, dLng = 0;
+        int Multi_Circle = 32;
+        double ratio = dis / distctlist.size() / 6367000.0;
+        StringBuilder sb_stay = new StringBuilder();
+        sb_stay.append("{  \"coordinates\": [\n    [\n");
+        for (int i = 0; i < Multi_Circle; i++) {
+            double angle = Math.toRadians(360.0 * i / Multi_Circle);
+            dLat = Math.atan(Math.sin(ratio) * Math.cos(angle) / Math.cos(ratio));
+            dLng = Math.asin(Math.sin(ratio) * Math.sin(angle) / Math.cos(Math.toRadians(centroidY) + dLat));
+            circleX = centroidX + Math.toDegrees(dLng);
+            circleY = centroidY + Math.toDegrees(dLat);
+            if (i > 0) {
+                sb_stay.append(", ");
+            }
+            sb_stay.append('[');
+            sb_stay.append(String.format("%.6f", circleX));
+            sb_stay.append(',');
+            sb_stay.append(String.format("%.6f", circleY));
+            sb_stay.append(']');
+        }
+        //closing multi polygon
+        sb_stay.append(',');
+        sb_stay.append('[');
+        dLat = Math.atan(Math.sin(ratio) * Math.cos(0) / Math.cos(ratio));
+        dLng = Math.asin(Math.sin(ratio) * Math.sin(0) / Math.cos(Math.toRadians(centroidY) + dLat));
+        sb_stay.append(String.format("%.6f", centroidX + Math.toDegrees(dLng)));
+        sb_stay.append(',');
+        sb_stay.append(String.format("%.6f", centroidY + Math.toDegrees((dLat))));
+        sb_stay.append(']');
+        sb_stay.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
+        System.out.println("***** Stay Circle " +  " *****");
+        System.out.println(sb_stay.toString());
+
+        return new Observation(new GHPoint(centroidY, centroidX), (int)dis / distctlist.size());
+    }
+
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
         double y = Math.sin(lng_b - lng_a) * Math.cos(lat_b);
         double x = Math.cos(lat_a) * Math.sin(lat_b) - Math.sin(lat_a) * Math.cos(lat_b) * Math.cos(lng_b - lng_a);
@@ -805,6 +885,12 @@ public class RoutingExample {
                 sb_stay.append("    ]  ],\n \"type\": \"MultiLineString\" \n}");
                 System.out.println("***** Stay Point " + key + " *****");
                 System.out.println(sb_stay.toString());
+
+                Observation centroid = getWeightedLocation(stayroutePointMap.get(key));
+                System.out.println("centroid coord = " +
+                        centroid.getPoint().getLon() + "," +
+                        centroid.getPoint().getLat() + "  and radius = " + centroid.getRadius());
+
                 continue;
             }
 

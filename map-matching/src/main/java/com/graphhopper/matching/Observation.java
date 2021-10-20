@@ -23,13 +23,24 @@ import java.util.Objects;
 
 public class Observation {
     private GHPoint point;
+    private int radius;
 
     public Observation(GHPoint p) {
         this.point = p;
+        this.radius = 0;
+    }
+
+    public Observation(GHPoint p, int r) {
+        this.point = p;
+        this.radius = r;
     }
 
     public GHPoint getPoint() {
         return point;
+    }
+
+    public int getRadius() {
+        return radius;
     }
 
     @Override
