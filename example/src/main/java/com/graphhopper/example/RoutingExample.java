@@ -57,6 +57,8 @@ public class RoutingExample {
     static int Time_Threshold = 60 * 15;
     static int Outdoor_Radius = 800;
     static int Indoor_Radius = 200;
+    static int Min_Indoor_Count = 3;
+    static double Outdoor_Confidence = 0.7;
 
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
@@ -460,7 +462,7 @@ public class RoutingExample {
                                 Double.parseDouble(right[0]), Double.parseDouble(right[1])
                         );
 
-                        if (dis <= Distance_Threshold && j == pointNum - 1) {
+                        if (j == pointNum - 1 && dis <= Distance_Threshold) {
                             diff = (int) (
                                     (
                                             df.parse(right[2]).getTime() - df.parse(left[2])
@@ -487,15 +489,11 @@ public class RoutingExample {
                                 }
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayPoint = null;
-                                i = j;
                             }
+                            i = j;
                             break;
                         }
 
-                        dis = getDistance(Double.parseDouble(left[0]),
-                                        Double.parseDouble(left[1]),
-                                        Double.parseDouble(right[0]), Double.parseDouble(right[1])
-                                );
                         if (dis > Distance_Threshold) {
                             diff = (int) (
                                     (
@@ -523,15 +521,13 @@ public class RoutingExample {
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayIndex ++;
                                 stayPoint = null;
-                                i = j;
+                                i = j - 1;
                             }
+                            routeArray.add((String)arrayList.get(j));
                             break;
                         }
                         j += 1;
                     }
-
-                    routeArray.add((String)arrayList.get(i));
-
                     i += 1;
                 }
                 catch (Exception e) {
@@ -738,6 +734,12 @@ public class RoutingExample {
             }
         }
 
+        boolean isconfidence = false;
+        if (ct_indoor >= Min_Indoor_Count) {
+            //indoor centroid
+            isconfidence = true;
+        }
+
         int fix = 1000;
         double centroidX = 0, centroidY = 0, plusW = 0;
 
@@ -746,32 +748,46 @@ public class RoutingExample {
         }
 
         for (Observation latLng: weightedList) {
-            centroidX += latLng.getPoint().getLon() * ((fix / latLng.getRadius())  / plusW);
-            centroidY += latLng.getPoint().getLat() * ((fix / latLng.getRadius())  / plusW);
+            if (isconfidence) {
+                if (latLng.getRadius() == Indoor_Radius) {
+                    centroidX += latLng.getPoint().getLon();
+                    centroidY += latLng.getPoint().getLat();
+                }
+            }
+            else {
+                centroidX += latLng.getPoint().getLon() * ((fix / latLng.getRadius()) / plusW);
+                centroidY += latLng.getPoint().getLat() * ((fix / latLng.getRadius()) / plusW);
+            }
         }
 
         double dis = 0;
-        double confidence = 0.8;
         double radius = 0;
-        if (ct_indoor >= 2) {
-            confidence = 1.0;
-        }
+
         for (Observation latLng : weightedList) {
             dis += getDistance(latLng.getPoint().getLon(), latLng.getPoint().getLat(), centroidX, centroidY);
-            if (latLng.getRadius() == Indoor_Radius) {
-                centroidX = latLng.getPoint().getLon();
-                centroidY = latLng.getPoint().getLat();
-            }
         }
 
         if (weightedList.size() == 1) {
             dis = weightedList.get(0).getRadius();
         }
 
+        dis = dis / weightedList.size();
+
+        if (isconfidence) {
+            centroidX = centroidX / ct_indoor;
+            centroidY = centroidY / ct_indoor;
+            radius = Indoor_Radius;
+        }
+        else {
+            radius = dis / Outdoor_Confidence;
+        }
+
         double circleX = 0, circleY = 0;
         double dLat = 0, dLng = 0;
         int Multi_Circle = 32;
-        double ratio = dis / confidence / weightedList.size() / 6367000.0;
+
+        double ratio = radius / 6367000.0;
+
         StringBuilder sb_stay = new StringBuilder();
         sb_stay.append("{  \"coordinates\": [\n    [\n");
         for (int i = 0; i < Multi_Circle; i++) {
@@ -802,9 +818,9 @@ public class RoutingExample {
         System.out.println("***** Stay Circle " + " *****");
         System.out.println(sb_stay.toString());
         System.out.println("centroid coord = " + centroidX + "," + centroidY +
-                "  and radius = " + (int)(dis / confidence / weightedList.size()) +
-                "  and confidence = " + confidence);
-        return new Observation(new GHPoint(centroidY, centroidX), (int)(dis / confidence / weightedList.size()));
+                "  and radius = " + (int)radius +
+                "  and confidence = " + isconfidence);
+        return new Observation(new GHPoint(centroidY, centroidX), (int)radius);
     }
 
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
