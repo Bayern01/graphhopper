@@ -23,15 +23,16 @@ import java.util.Objects;
 
 public class Observation {
     private GHPoint point;
+    private long time;
     private int radius;
 
     public Observation(GHPoint p) {
         this.point = p;
-        this.radius = 0;
     }
 
-    public Observation(GHPoint p, int r) {
+    public Observation(GHPoint p, long t, int r) {
         this.point = p;
+        this.time = t;
         this.radius = r;
     }
 
@@ -39,9 +40,9 @@ public class Observation {
         return point;
     }
 
-    public int getRadius() {
-        return radius;
-    }
+    public long getTime() { return time;}
+
+    public int getRadius() { return radius;}
 
     @Override
     public String toString() {

@@ -28,6 +28,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -426,7 +427,7 @@ public class RoutingExample {
             return denoise;
         }
 
-        public static HashMap<Integer, ArrayList<Observation>> StayPoint_Detection(ArrayList arrayList) {
+        public static HashMap<Integer, ArrayList<String>> trajAnalysis(ArrayList arrayList) {
             DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
 
             int i = 0;
@@ -437,19 +438,18 @@ public class RoutingExample {
             String[] right = null;
             String[] prev_right = null;
             int diff = 0;
-            double lng,lat;
-            int radius;
             double dis;
+            boolean token = false;
 
-            ArrayList<Observation> stayPoint = null;
-            ArrayList<Observation> routePoint = new ArrayList<>();
-            ArrayList<String> routeArray = new ArrayList<>();
-            HashMap<Integer, ArrayList<Observation>> stayroutePointMap = new HashMap<>();
+            ArrayList<String> stayPoint = null;
+            ArrayList<String> routePoint = null;
+            HashMap<Integer, ArrayList<String>> stayroutePointMap = new HashMap<>();
 
             int pointNum = arrayList.size();
 
             while (i < pointNum) {
                 j = i + 1;
+                token = false;
                 try {
                     left = ((String) arrayList.get(i)).split(",");
                     while (j < pointNum) {
@@ -475,20 +475,11 @@ public class RoutingExample {
                                     stayPoint = new ArrayList<>();
                                 }
                                 for (int t = i; t < j + 1; t++) {
-                                    lng = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[0]);
-                                    lat = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[1]);
-                                    if (((String) arrayList.get(t)).split(",")[3].equals("outdoor")) {
-                                        radius = Outdoor_Radius;
-                                    } else {
-                                        radius = Indoor_Radius;
-                                    }
-                                    Observation sample = new Observation(new GHPoint(lat, lng), radius);
-                                    stayPoint.add(sample);
+                                    stayPoint.add((String)arrayList.get(t));
                                 }
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayPoint = null;
+                                token = true;
                             }
                             i = j;
                             break;
@@ -506,28 +497,32 @@ public class RoutingExample {
                                     stayPoint = new ArrayList<>();
                                 }
                                 for (int t = i; t < j; t++) {
-                                    lng = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[0]);
-                                    lat = Double.parseDouble(
-                                            ((String) arrayList.get(t)).split(",")[1]);
-                                    if (((String) arrayList.get(t)).split(",")[3].equals("outdoor")) {
-                                        radius = Outdoor_Radius;
-                                    } else {
-                                        radius = Indoor_Radius;
-                                    }
-                                    Observation sample = new Observation(new GHPoint(lat, lng), radius);
-                                    stayPoint.add(sample);
+                                    stayPoint.add((String)arrayList.get(t));
                                 }
                                 stayroutePointMap.put(stayIndex, stayPoint);
                                 stayIndex ++;
                                 stayPoint = null;
                                 i = j - 1;
+                                token = true;
                             }
-                            routeArray.add((String)arrayList.get(j));
                             break;
                         }
                         j += 1;
                     }
+                    if (!token) {
+                        if (routePoint == null) {
+                            routePoint = new ArrayList<>();
+                        }
+                        routePoint.add((String)arrayList.get(i));
+                    }
+                    else {
+                        if (routePoint != null) {
+                            stayroutePointMap.put(routeIndex, routePoint);
+                            routePoint = null;
+                            routeIndex--;
+                        }
+                    }
+
                     i += 1;
                 }
                 catch (Exception e) {
@@ -536,76 +531,118 @@ public class RoutingExample {
                 }
             }
 
-            routePoint = trajReduce(routeArray);
-
-            System.out.println("routePoint size = " + routePoint.size());
-
-            stayroutePointMap.put(routeIndex, routePoint);
+            if (routePoint != null) {
+                stayroutePointMap.put(routeIndex, routePoint);
+            }
 
             return stayroutePointMap;
         }
 
-        public static ArrayList<Observation> trajReduce(ArrayList arrayList) {
+        public static HashMap<Integer, ArrayList<StayPoint>>trajSegment(HashMap<Integer, ArrayList<String>> stayroutePointMapList) {
+            HashMap<Integer, ArrayList<StayPoint>> stayroutePointMap = new HashMap<>();
+
+            for (int key : stayroutePointMapList.keySet()) {
+                if (key > 0) {
+                    ArrayList<StayPoint> stayPointList = new ArrayList<>();
+                    StayPoint sp = getWeightedLocation(stayroutePointMapList.get(key));
+                    stayPointList.add(sp);
+                    stayroutePointMap.put(key, stayPointList);
+                }
+            }
+
             DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
 
+            for (int key : stayroutePointMapList.keySet()) {
+                if (key < 0) {
+                    ArrayList<String> obList = stayroutePointMapList.get(key);
+                    ArrayList<StayPoint> routePointList = new ArrayList<>();
+                    for (String tmp : obList) {
+                        double lng = Double.parseDouble(tmp.split(",")[0]);
+                        double lat = Double.parseDouble(tmp.split(",")[1]);
+                        long st;
+                        try {
+                            st = df.parse(tmp.split(",")[2]).getTime();
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
+                            return null;
+                        }
+
+                        int radius;
+                        if (tmp.split(",")[3].equals("outdoor")) {
+                            radius = Outdoor_Radius;
+                        }
+                        else {
+                            radius = Indoor_Radius;
+                        }
+
+                        StayPoint sp = new StayPoint(new GHPoint(lat, lng), radius, st, 0);
+                        routePointList.add(sp);
+                    }
+
+                    stayroutePointMap.put(key, routePointList);
+                }
+            }
+
+            System.out.println("traj segment size = " + stayroutePointMap.size());
+
+            return stayroutePointMap;
+        }
+
+        public static ArrayList<Observation> trajReduce(ArrayList<StayPoint> arrayList) {
             int i = 0;
             int j = 0;
-            String[] temp1 = null;
-            String[] temp2 = null;
+            StayPoint temp1 = null;
+            StayPoint temp2 = null;
             int diff = 0;
             double lng,lat;
+            long tm;
 
             ArrayList<Observation> samples = new ArrayList<>();
             ArrayList<Double> lngList = new ArrayList<>();
             ArrayList<Double> latList = new ArrayList<>();
+            ArrayList<Long> tmList = new ArrayList<>();
 
             int pointNum = arrayList.size();
 
-            try {
-                while (i < pointNum) {
-                    j = i + 1;
+            while (i < pointNum) {
+                j = i + 1;
 
-                    temp1 = ((String) arrayList.get(i)).split(",");
-                    while (j < pointNum) {
-                        temp2 = ((String) arrayList.get(j)).split(",");
-                        diff = (int) (
-                                (
-                                        df.parse(temp2[2]).getTime() - df.parse(temp1[2])
-                                                .getTime()
-                                ) / 1000
-                        );
+                temp1 = arrayList.get(i);
+                while (j < pointNum) {
+                    temp2 = arrayList.get(j);
+                    diff = (int) (temp2.getStarttime() - temp1.getStarttime()) / 1000;
 
-                        if (diff > Reduce_Seconds) {
-                            break;
-                        }
-
-                        lngList.add(Double.parseDouble(temp2[0]));
-                        latList.add(Double.parseDouble(temp2[1]));
-                        j += 1;
+                    if (diff > Reduce_Seconds) {
+                        break;
                     }
 
-                    if (lngList.size() > 0) {
-                        lngList.add(Double.parseDouble(temp1[0]));
-                        latList.add(Double.parseDouble(temp1[1]));
-                        lng = lngList.stream().collect(Collectors.averagingDouble(x -> x));
-                        lat = latList.stream().collect(Collectors.averagingDouble(x -> x));
-                        Observation sample = new Observation(new GHPoint(lat, lng));
-                        samples.add(sample);
-                        lngList.clear();
-                        latList.clear();
-                    }
-                    else {
-                        lng = Double.parseDouble(temp1[0]);
-                        lat = Double.parseDouble(temp1[1]);
-                        Observation sample = new Observation(new GHPoint(lat, lng));
-                        samples.add(sample);
-                    }
-                    i = j;
+                    lngList.add(temp2.getPoint().getLon());
+                    latList.add(temp2.getPoint().getLat());
+                    tmList.add(temp2.getStarttime());
+                    j += 1;
                 }
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-                return null;
+
+                if (lngList.size() > 0) {
+                    lngList.add(temp1.getPoint().getLon());
+                    latList.add(temp1.getPoint().getLat());
+                    tmList.add(temp1.getStarttime());
+                    lng = lngList.stream().collect(Collectors.averagingDouble(x -> x));
+                    lat = latList.stream().collect(Collectors.averagingDouble(x -> x));
+                    tm = (tmList.stream().collect(Collectors.averagingLong(x -> x))).longValue();
+                    Observation sample = new Observation(new GHPoint(lat, lng), tm, Outdoor_Radius);
+                    samples.add(sample);
+                    lngList.clear();
+                    latList.clear();
+                }
+                else {
+                    lng = temp1.getPoint().getLon();
+                    lat = temp1.getPoint().getLat();
+                    tm = temp1.getStarttime();
+                    Observation sample = new Observation(new GHPoint(lat, lng), tm, Outdoor_Radius);
+                    samples.add(sample);
+                }
+                i = j;
             }
 
             return samples;
@@ -631,7 +668,7 @@ public class RoutingExample {
                 return null;
             }
 
-            reduced = DouglasPeuckerUtil.DouglasPeucker(tmpObservation, 0.001);
+            reduced = DouglasPeuckerUtil.DouglasPeucker(tmpObservation, 0.1);
             return reduced;
         }
     }
@@ -717,12 +754,35 @@ public class RoutingExample {
         return sortedPoint;
     }
 
-    public static Observation getWeightedLocation(ArrayList<Observation> origList) {
+    public static StayPoint getWeightedLocation(ArrayList<String> origList) {
         ArrayList<Observation> weightedList = new ArrayList<>();
+
+        double lng, lat;
+        double radius = 0;
+        long st = 0;
+
+        DateFormat df = new SimpleDateFormat("yyyyMMddHHmmssSSS");
+        ArrayList<Observation> obList = new ArrayList<>();
+        try {
+            for (String tmp : origList) {
+                lng = Double.parseDouble(tmp.split(",")[0]);
+                lat = Double.parseDouble(tmp.split(",")[1]);
+                st = df.parse(tmp.split(",")[2]).getTime();
+                if (tmp.split(",")[3].equals("outdoor")) {
+                    radius = Outdoor_Radius;
+                }
+                else {
+                    radius = Indoor_Radius;
+                }
+                obList.add(new Observation(new GHPoint(lat, lng), st, (int) radius));
+            }
+        }catch (Exception e) {
+            e.printStackTrace();
+        }
 
         int ct_indoor = 0;
         // outdoor: distinct ; indoor: not distinct
-        for (Observation o : origList) {
+        for (Observation o : obList) {
             if (o.getRadius() == Outdoor_Radius) {
                 if (!weightedList.contains(o)) {
                     weightedList.add(o);
@@ -761,7 +821,6 @@ public class RoutingExample {
         }
 
         double dis = 0;
-        double radius = 0;
 
         for (Observation latLng : weightedList) {
             dis += getDistance(latLng.getPoint().getLon(), latLng.getPoint().getLat(), centroidX, centroidY);
@@ -820,7 +879,10 @@ public class RoutingExample {
         System.out.println("centroid coord = " + centroidX + "," + centroidY +
                 "  and radius = " + (int)radius +
                 "  and confidence = " + isconfidence);
-        return new Observation(new GHPoint(centroidY, centroidX), (int)radius);
+
+        int stayt = (int)(obList.get(obList.size() - 1).getTime() - obList.get(0).getTime()) / 1000 / 60;
+        return new StayPoint(new GHPoint(centroidY, centroidX),
+                (int)radius, obList.get(0).getTime(), stayt);
     }
 
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
@@ -890,20 +952,16 @@ public class RoutingExample {
             e.printStackTrace();
         }
 
-        /*ArrayList<Observation> samples = InputFormatMy.trajReduce(denoise);
-        System.out.println("samples size = " + samples.size());
+        HashMap<Integer, ArrayList<String>> stayroutePointMapList = InputFormatMy.trajAnalysis(denoiseList);
 
-        HashMap<Integer, ArrayList<Observation>> stayroutePointMap =
-                mapMatching.trajectoryCalculate(samples);*/
-
-        HashMap<Integer, ArrayList<Observation>> stayroutePointMap = InputFormatMy.StayPoint_Detection(denoiseList);
+        HashMap<Integer, ArrayList<StayPoint>> stayroutePointMap = InputFormatMy.trajSegment(stayroutePointMapList);
 
         ArrayList<Observation> routePoint = null;
         ArrayList<Observation> sortedPoint = null;
 
         for (Integer key : stayroutePointMap.keySet()) {
             if (key > 0) {
-                sortedPoint = multiPointSort(stayroutePointMap.get(key));
+/*                sortedPoint = multiPointSort(stayroutePointMap.get(key));
 
                 StringBuilder sb_stay = new StringBuilder();
                 sb_stay.append("{  \"coordinates\": [\n    [\n");
@@ -930,15 +988,48 @@ public class RoutingExample {
                 System.out.println("***** Stay Point " + key + " *****");
                 System.out.println(sb_stay.toString());
 
-                Observation centroid = getWeightedLocation(stayroutePointMap.get(key));
+                Observation centroid = getWeightedLocation(stayroutePointMap.get(key));*/
 
                 continue;
             }
 
-            routePoint = stayroutePointMap.get(key);
+            routePoint = InputFormatMy.trajReduce(stayroutePointMap.get(key));
+            ArrayList<StayPoint> sp = stayroutePointMap.get(1);
 
-            if (routePoint.isEmpty() || routePoint.size() <= 1) {
+            if (routePoint.isEmpty())
+            {
                 continue;
+            }
+            int startkey, endkey;
+            //route points add stay points in head and tail
+
+            if (key != -1) {
+                startkey = -key -1;
+            }
+            else {
+                startkey = -key;
+            }
+
+            if (key != -1) {
+                endkey = -key + 1;
+            }
+            else {
+                endkey = -key + 1;
+            }
+
+            ArrayList<StayPoint> head = stayroutePointMap.get(startkey);
+            ArrayList<StayPoint> tail = stayroutePointMap.get(endkey);
+            if (head != null) {
+                java.util.Date dt = new Date(head.get(0).getStarttime() + head.get(0).getStaytime() * 60 * 1000);
+                System.out.println(dt.toString());
+                routePoint.add(0, new Observation(head.get(0).getPoint(),
+                            head.get(0).getStarttime() + head.get(0).getStaytime() * 60 * 1000,
+                            head.get(0).getRadius()
+                    ));
+            }
+            if (tail != null) {
+                routePoint.add(new Observation(tail.get(0).getPoint(),
+                        tail.get(0).getStarttime(), tail.get(0).getRadius()));
             }
 
             StopWatch matchSW = new StopWatch();
@@ -1078,7 +1169,16 @@ public class RoutingExample {
             System.out.println("");*/
             System.out.println("*****OSM Node Point*****");
             System.out.println(sb.toString());
-            System.out.println("route distance = " + String.format("%.2f", route_dis / 1000) + " Km");
+
+            double delta = (routePoint.get(routePoint.size() - 1).getTime() - routePoint.get(0).getTime()) / 1000 / 60;
+            SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+            System.out.println("route distance = " +
+                    String.format("%.2f", route_dis / 1000) + " Km" +
+                    "   route time = " + String.format("%.2f", delta) + " m" +
+                    "   speed = " + String.format("%.2f", route_dis * 60 / 1000 / delta ) + " Km/h" +
+                    "   route start = " + df.format(routePoint.get(0).getTime()) +
+                    "   route end = " + df.format(routePoint.get(routePoint.size() - 1).getTime()));
 
             System.out.println("match took: " + matchSW.getMillis() + " ms");
         }
