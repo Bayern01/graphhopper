@@ -1,5 +1,20 @@
 package com.graphhopper.example;
 
+import com.google.common.collect.Maps;
+import com.google.common.geometry.S2;
+import com.google.common.geometry.S2Cap;
+import com.google.common.geometry.S2Cell;
+import com.google.common.geometry.S2CellId;
+import com.google.common.geometry.S2CellUnion;
+import com.google.common.geometry.S2LatLng;
+import com.google.common.geometry.S2LatLngRect;
+import com.google.common.geometry.S2Loop;
+import com.google.common.geometry.S2Point;
+import com.google.common.geometry.S2PointRegion;
+import com.google.common.geometry.S2Polygon;
+import com.google.common.geometry.S2Region;
+import com.google.common.geometry.S2RegionCoverer;
+import com.google.common.geometry.S2RegionIntersection;
 import com.graphhopper.GHRequest;
 import com.graphhopper.GHResponse;
 import com.graphhopper.GraphHopper;
@@ -54,18 +69,21 @@ public class RoutingExample {
     static int Max_Distance= 1500;
     static int Degree_Threshold = 30;
     static int Reduce_Seconds = 60 * 5;
-    static int Distance_Threshold = 800;
+    static int Distance_Threshold =  800;
     static int Time_Threshold = 60 * 15;
     static int Outdoor_Radius = 800;
     static int Indoor_Radius = 200;
     static int Min_Indoor_Count = 3;
     static double Outdoor_Confidence = 0.7;
+    static double EARTH_RADIUS = 6367000.0D;
+    static double kEarthCircumferenceMeters = 40075017;
+    static int S2_Dim_Level = 18;
 
     public static void main(String[] args) {
         String relDir = args.length == 1 ? args[0] : "";
         String strosm = "./sichuan.osm.pbf";
         String hdfsosm = "hdfs://127.0.0.1:9000/target/sichuan.osm.pbf";
-        GraphHopper hopper = createGraphHopperInstance(relDir + hdfsosm);
+        GraphHopper hopper = createGraphHopperInstance(relDir + strosm);
         matchingTest(hopper);
         //routing(hopper);
 /*        speedModeVersusFlexibleMode(hopper);
@@ -82,7 +100,7 @@ public class RoutingExample {
         // specify where to store graphhopper files
         String strtarget = "target/routing-graph-cache";
         String hdfshopper = "hdfs://127.0.0.1:9000/hopper";
-        hopper.setGraphHopperLocation(hdfshopper);
+        hopper.setGraphHopperLocation(strtarget);
         hopper.setStoreOnFlush(false);
 
         // see docs/core/profiles.md to learn more about profiles
@@ -845,7 +863,7 @@ public class RoutingExample {
         double dLat = 0, dLng = 0;
         int Multi_Circle = 32;
 
-        double ratio = radius / 6367000.0;
+        double ratio = radius / EARTH_RADIUS;
 
         StringBuilder sb_stay = new StringBuilder();
         sb_stay.append("{  \"coordinates\": [\n    [\n");
@@ -880,9 +898,102 @@ public class RoutingExample {
                 "  and radius = " + (int)radius +
                 "  and confidence = " + isconfidence);
 
+        long s2cell = getStayCell(centroidY, centroidX, radius);
+        System.out.println("s2cell = " + s2cell);
+
         int stayt = (int)(obList.get(obList.size() - 1).getTime() - obList.get(0).getTime()) / 1000 / 60;
         return new StayPoint(new GHPoint(centroidY, centroidX),
                 (int)radius, obList.get(0).getTime(), stayt);
+    }
+
+    public static long getStayCell(double lat, double lng, double r) {
+        int currentLevel = 16;
+
+        S2LatLng s2LatLng = S2LatLng.fromDegrees(lat, lng);
+        S2CellId cellId = S2CellId.fromLatLng(s2LatLng).parent(currentLevel);
+        System.out.println("Target cellId = " + cellId.id());
+
+        S2LatLng s2out = new S2CellId(cellId.id()).toLatLng();
+        double latout = s2out.latDegrees();
+        double lngout = s2out.lngDegrees();
+        System.out.println("lngout = " + lngout + " latout = " + latout);
+
+        double capHeight = (2 * S2.M_PI) * (r / kEarthCircumferenceMeters);
+        S2LatLng s2LatLng1= S2LatLng.fromDegrees(lat, lng);
+        S2Cap cap = S2Cap.fromAxisHeight(s2LatLng1.toPoint(),capHeight * capHeight / 2);
+        System.out.println("radius = " + r + " area = " + cap.area() * EARTH_RADIUS * EARTH_RADIUS);
+
+        ArrayList<S2Point>  vertices = new ArrayList<>();
+
+        //∞¥’’ƒÊ ±’ÎÀ≥–ÚÃÌº”
+        vertices.add(S2LatLng.fromDegrees(30.701368518399796,104.02627461190419).toPoint());
+        vertices.add(S2LatLng.fromDegrees(30.699328729316257,104.02887101670349).toPoint());
+        vertices.add(S2LatLng.fromDegrees(30.701492595650798,104.03252420632933).toPoint());
+        vertices.add(S2LatLng.fromDegrees(30.70381116549,104.02985576959131).toPoint());
+        vertices.add(S2LatLng.fromDegrees(30.701368518399796,104.02627461190419).toPoint());
+        S2Loop s2Loop = new S2Loop(vertices);
+        S2Polygon s2polygon = new S2Polygon(s2Loop);
+        System.out.println("s2polygon area = " + s2polygon.getArea() * EARTH_RADIUS * EARTH_RADIUS);
+
+        S2RegionCoverer coverer = S2RegionCoverer.builder().
+                setLevelMod(1).
+                setMaxLevel(14).
+                setMinLevel(18).
+                setMaxCells(100).
+                build();
+
+        ArrayList<S2CellId> arrcell = new ArrayList<>();
+        //S2CellUnion covering = coverer.getCovering(s2polygon);
+        S2CellUnion covering = coverer.getCovering(cap);
+
+        boolean b = false;
+        for (S2CellId s2CellId : covering.cellIds()) {
+            b = cap.mayIntersect(new S2Cell(s2CellId));
+            if (b) {
+                System.out.println("Intersect cellid = " + s2CellId + " id = " + s2CellId.id());
+                break;
+            }
+        }
+
+        if (b)
+            System.out.println("Intersect");
+        else
+            System.out.println("Not Intersect");
+
+        /*for (int i = 0; i < covering.size(); i++) {
+            System.out.println("covering cellid " + i + " = " + covering.cellIds().get(i) +
+                    " id = " + covering.cellIds().get(i).id());
+        }*/
+
+/*        int minLevel = 12;
+        int maxLevel = 15;
+        S2CellId paCell = null;
+        boolean inRegion = false;
+        for (int i = minLevel; i < (maxLevel + 1); i++) {
+            paCell = cellId.parent(i);
+            if (covering.cellIds().contains(paCell)) {
+                inRegion = true;
+                //System.out.println("Matched paCellid = " + paCell);
+                break;
+            }
+        }*/
+
+        Map<Integer,Integer> sizeCountMap= Maps.newHashMap();
+        StringBuilder sb3 = new StringBuilder();
+        S2Region s2Region = S2Util.getS2RegionByCircle(lat,lng, r);
+        List<S2CellId> cellIdListByPolygon = S2Util.getCompactCellIdList(s2Region);
+        cellIdListByPolygon.forEach(s2CellId -> {
+            System.out.println("Level:" + s2CellId.level() + ",ID:" + s2CellId.toToken() + ",Min:" + s2CellId.rangeMin().toToken() + ",Max:" + s2CellId.rangeMax().toToken());
+            sb3.append(",").append(s2CellId.toToken());
+            sizeCountMap.put(s2CellId.level(),sizeCountMap.getOrDefault(s2CellId.level(),0)+1);
+        });
+        System.out.println(sb3.substring(1));
+        System.out.println("totalSize:"+cellIdListByPolygon.size());
+        sizeCountMap.entrySet().forEach(integerIntegerEntry -> {
+            System.out.printf("level:%d,size:%d\n",integerIntegerEntry.getKey(),integerIntegerEntry.getValue());
+        });
+
+        return cellId.id();
     }
 
     private static double getAngle1(double lat_a, double lng_a, double lat_b, double lng_b) {
@@ -1111,6 +1222,8 @@ public class RoutingExample {
             double last_lon = 0;
             double last_lat = 0;
 
+            ArrayList <S2CellId> routes2cell = new ArrayList<>();
+
             for (int i = 0; i < samples_result.length - 1; i++) {
             //for (int i = 0; i < list_edge.size() -1; i++) {
                 EdgeMatch edge_match = samples_result[i];
@@ -1146,6 +1259,9 @@ public class RoutingExample {
                 last_lon = internalNodeId_lon;
                 last_lat = internalNodeId_lat;
 
+                S2LatLng s2LatLng = S2LatLng.fromDegrees(internalNodeId_lat, internalNodeId_lon);
+                S2CellId cellId = S2CellId.fromLatLng(s2LatLng).parent(S2_Dim_Level);
+                routes2cell.add(cellId);
 
 /*                for (int j = 0; j < list_state.size(); j++) {
                     if (i > 0) {
@@ -1169,6 +1285,20 @@ public class RoutingExample {
             System.out.println("");*/
             System.out.println("*****OSM Node Point*****");
             System.out.println(sb.toString());
+
+            StringBuilder routes2sb = new StringBuilder();
+            double s2celldis = 0;
+            routes2sb.append("Route S2CellId : ");
+            for (int i = 0; i < routes2cell.size(); i++) {
+                routes2sb.append(routes2cell.get(i).id());
+                routes2sb.append(", ");
+                if (i < routes2cell.size() - 1) {
+                    s2celldis += routes2cell.get(i).toPoint().getDistance(
+                            routes2cell.get(i+1).toPoint()) * EARTH_RADIUS;
+                }
+            }
+            System.out.println(routes2sb.toString());
+            System.out.println("Route S2CellId Distance = " + s2celldis / 1000 + " Km");
 
             double delta = (routePoint.get(routePoint.size() - 1).getTime() - routePoint.get(0).getTime()) / 1000 / 60;
             SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
